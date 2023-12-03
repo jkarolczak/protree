@@ -1,5 +1,6 @@
-from argparse import ArgumentParser
+from argparse import ArgumentParser, BooleanOptionalAction
 from pathlib import Path
+from typing import Literal
 
 import pandas as pd
 
@@ -79,7 +80,7 @@ def _download_breast_cancer(
     _split_dataframe_and_save(df=breast_cancer.frame, dataset_name="breast_cancer", directory=directory)
 
 
-def _download_right_heart_catheterization(
+def _download_rhs(
     directory: str = DEFAULT_DATA_DIR
 ) -> None:
     from io import StringIO
@@ -95,7 +96,7 @@ def _download_right_heart_catheterization(
     df = pd.read_csv(StringIO(response.content.decode("utf-8")), index_col=[0])
     df.insert(df.shape[1] - 1, "target1", df.pop("cat1"))
     df.insert(df.shape[1] - 1, "target2", df.pop("cat2"))
-    _split_dataframe_and_save(df=df, dataset_name="right_heart_catheterization", directory=directory)
+    _split_dataframe_and_save(df=df, dataset_name="rhs", directory=directory)
 
 
 def _download_compass(
@@ -174,34 +175,95 @@ def _download_caltech(
 ) -> None:
     from tempfile import TemporaryDirectory
 
+    import torch
+    from torchvision import transforms
     from torchvision.datasets import Caltech256
     from torchvision.models.resnet import resnet50, ResNet50_Weights
 
-    resnet = resnet50(ResNet50_Weights.IMAGENET1K_V2)
-    print(resnet)
+    def collate_fn(batch: list[tuple[torch.Tensor, int]]):
+        images = []
+        labels = []
+        for idx, (image, label) in enumerate(batch):
+            images.append(image.repeat(3, 1, 1) if image.shape[0] == 1 else image)
+            labels.append(label)
+        return torch.stack(images, dim=0), labels
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor()
+    ])
+
+    resnet = resnet50(ResNet50_Weights.IMAGENET1K_V2).to(device)
 
     with TemporaryDirectory() as _tmp_dir:
-        caltech = Caltech256(root=_tmp_dir, download=True)
+        caltech = Caltech256(root=_tmp_dir, transform=transform, download=True)
+        dataloader = torch.utils.data.DataLoader(
+            caltech,
+            batch_size=32,
+            shuffle=False,
+            collate_fn=collate_fn
+        )
 
-        for image, label in caltech:
-            print(x)
-            break
+        x = []
+        y = []
+
+        for i, (images, labels) in enumerate(dataloader):
+            vector = resnet(images.to(device))
+            x.extend(vector.cpu().tolist())
+            y.extend(labels)
+
+        df = pd.DataFrame(data=x, columns=[f"x{i + 1}" for i in range(len(x[0]))])
+        df["target"] = y
+
+    _split_dataframe_and_save(df=df, dataset_name="caltech", directory=directory)
+
+
+dataset_func_mapping = {
+    "breast_cancer": _download_breast_cancer,
+    "caltech": _download_caltech,
+    "compass": _download_compass,
+    "diabetes": _download_diabetes,
+    "mnist": _download_mnist,
+    "rhs": _download_rhs
+}
 
 
 def download_all(
-    directory: str = DEFAULT_DATA_DIR
+    directory: str = DEFAULT_DATA_DIR,
+    dataset_names: list[Literal["all", "breast_cancer", "caltech", "compass", "diabetes", "mnist", "rhs"]] = "all",
+    verbose: bool = True
 ) -> None:
     path = Path(directory)
     path.mkdir(parents=True, exist_ok=True)
 
-    # for download_function in [_download_caltech, _download_breast_cancer, _download_compass, _download_diabetes,
-    #                            _download_mnist, _download_right_heart_catheterization]:
-    for download_function in [_download_caltech]:
-        download_function(directory=directory)
+    allowable_datasets = ["breast_cancer", "caltech", "compass", "diabetes", "mnist", "rhs"]
+
+    if "all" in dataset_names:
+        dataset_names = allowable_datasets
+
+    for dataset_name in dataset_names:
+        if dataset_name not in allowable_datasets:
+            raise NameError(f"Unknown dataset: {dataset_name}")
+        if verbose:
+            print(f"Processing {dataset_name}...")
+        globals()[f"_download_{dataset_name}"](directory=directory)
 
 
 parser = ArgumentParser("Download datasets for running experiments.")
-parser.add_argument("--directory", "-d", help="directory to store datasets")
+parser.add_argument("--directory", "-d", default=DEFAULT_DATA_DIR, help="Directory to store datasets")
+parser.add_argument("--silent", "-s", action=BooleanOptionalAction,
+                    help="Supress displaying progress.")
+parser.add_argument("--dataset-names", "-n", default="all", help="Comma-separated list of dataset names to"
+                                                                 " download. Allowable values are 'breast_cancer', "
+                                                                 "'caltech', 'compass', 'diabetes', 'mnist' and 'rhs'. "
+                                                                 "Use 'all' to download all datasets")
+
 if __name__ == "__main__":
-    parser.parse_args()
-    download_all()
+    args = parser.parse_args()
+
+    download_all(
+        directory=args.directory,
+        dataset_names=[s.strip() for s in args.dataset_names.split(",")],
+        verbose=not args.silent
+    )
