@@ -1,0 +1,5 @@
+pandas
+python-mnist
+scikit-learn
+torch
+torchvision
