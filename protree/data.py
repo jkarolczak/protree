@@ -1,12 +1,63 @@
 from argparse import ArgumentParser, BooleanOptionalAction
 from pathlib import Path
-from typing import Literal
+from typing import get_args, Literal, TypeAlias
 
 import pandas as pd
 
 from meta import RANDOM_SEED
 
 DEFAULT_DATA_DIR = "./data"
+
+TDataset: TypeAlias = Literal["breast_cancer", "caltech", "compass", "diabetes", "mnist", "rhs"]
+
+
+class Dataset:
+    def __init__(
+            self,
+            name: TDataset,
+            directory: str = DEFAULT_DATA_DIR,
+            lazy: bool = True
+    ) -> None:
+        self.name = name
+        self.directory = Path(directory)
+        self.lazy = lazy
+
+        sub_datasets = ["train", "valid", "test"]
+        for ds in sub_datasets:
+            setattr(self, f"_{ds}", None)
+
+        if not lazy:
+            for ds in sub_datasets:
+                getattr(self, ds)
+
+    def _read_file(self, dataset: str) -> pd.DataFrame:
+        return pd.read_csv(self.directory / f"{self.name}_{dataset}.csv", index_col=[0])
+
+    @staticmethod
+    def x_y_split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+        x = df[[col for col in df.columns if "target" not in col]]
+        y = df[[col for col in df.columns if "target" in col]]
+        if isinstance(y, pd.Series):
+            y = pd.DataFrame({"target": y})
+        return x, y
+
+    @property
+    def train(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+        if not self._train:
+            self._train = Dataset.x_y_split(self._read_file("train"))
+        return self._train
+
+    @property
+    def valid(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+        if not self._test:
+            self._valid = Dataset.x_y_split(self._read_file("valid"))
+        return self._valid
+
+    @property
+    def test(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+        if not self._test:
+            self._test = Dataset.x_y_split(self._read_file("test"))
+        return self._test
 
 
 def _save_dataframe(
@@ -219,25 +270,15 @@ def _download_caltech(
     _split_dataframe_and_save(df=df, dataset_name="caltech", directory=directory)
 
 
-dataset_func_mapping = {
-    "breast_cancer": _download_breast_cancer,
-    "caltech": _download_caltech,
-    "compass": _download_compass,
-    "diabetes": _download_diabetes,
-    "mnist": _download_mnist,
-    "rhs": _download_rhs
-}
-
-
 def download_all(
     directory: str = DEFAULT_DATA_DIR,
-    dataset_names: list[Literal["all", "breast_cancer", "caltech", "compass", "diabetes", "mnist", "rhs"]] = "all",
+    dataset_names: list[Literal["all"] | TDataset] = "all",
     verbose: bool = True
 ) -> None:
     path = Path(directory)
     path.mkdir(parents=True, exist_ok=True)
 
-    allowable_datasets = ["breast_cancer", "caltech", "compass", "diabetes", "mnist", "rhs"]
+    allowable_datasets = get_args(TDataset)
 
     if "all" in dataset_names:
         dataset_names = allowable_datasets
