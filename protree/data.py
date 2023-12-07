@@ -162,10 +162,26 @@ def _download_compass(
             "downloadformat": "csv"
         }
     )
-
     df = pd.read_csv(StringIO(response.content.decode("utf-8")))
-    df = df.drop(columns=["id", "name", "first", "last"])
-    df = df.rename(columns={
+    df = df[["age", "c_charge_degree", "race", "age_cat", "score_text", "sex", "priors_count", "days_b_screening_arrest",
+             "decile_score", "is_recid", "two_year_recid", "c_jail_in", "c_jail_out"]]
+
+    ix = (df["days_b_screening_arrest"] <= 30 & (df["days_b_screening_arrest"] >= -30) & (df["is_recid"] != -1) &
+          (df["c_charge_degree"] != "O") & (df["score_text"] != "N/A"))
+    df = df.loc[ix]
+    df["length_of_stay"] = (pd.to_datetime(df["c_jail_out"]) - pd.to_datetime(df["c_jail_in"])).apply(lambda x: x.days)
+
+    df_cut = df.loc[~df["race"].isin(["Native American", "Hispanic", "Asian", "Other"]), :]
+    df_cut_q = df_cut[["sex", "race", "age_cat", "c_charge_degree", "score_text", "priors_count", "is_recid",
+                       "two_year_recid"]].copy()
+    df_cut_q["priors_count"] = df_cut_q["priors_count"].apply(
+        lambda x: "0" if x <= 0 else ("1 to 3" if 1 <= x <= 3 else "More than 3"))
+    df_cut_q["score_text"] = df_cut_q["score_text"].apply(lambda x: "MediumHigh" if (x == "High") | (x == "Medium") else x)
+    df_cut_q["age_cat"] = df_cut_q["age_cat"].replace({"25 - 45": "25 to 45"})
+    df_cut_q["sex"] = df_cut_q["sex"].replace({"Female": 1.0, "Male": 0.0})
+    df_cut_q["race"] = df_cut_q["race"].apply(lambda x: 1.0 if x == "Caucasian" else 0.0)
+
+    df = df_cut_q[["two_year_recid", "sex", "race", "age_cat", "priors_count", "c_charge_degree"]].rename(columns={
         "two_year_recid": "target"
     })
     _split_dataframe_and_save(df=df, dataset_name="compass", directory=directory)
