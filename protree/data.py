@@ -1,14 +1,26 @@
+import os
 from argparse import ArgumentParser, BooleanOptionalAction
 from pathlib import Path
 from typing import get_args, Literal, TypeAlias
 
 import pandas as pd
+from sklearn.preprocessing import OrdinalEncoder
 
-from meta import RANDOM_SEED
+from protree.meta import RANDOM_SEED
+from protree.transformations import MultilabelHotEncoder
 
-DEFAULT_DATA_DIR = "./data"
+DEFAULT_DATA_DIR = os.environ.get("DEFAULT_DATA_DIR", "./data")
 
-TDataset: TypeAlias = Literal["breast_cancer", "caltech", "compass", "diabetes", "mnist", "rhs"]
+TDataset: TypeAlias = Literal["breast_cancer", "caltech", "compass", "diabetes", "mnist", "rhc"]
+categorical_columns: dict[TDataset, list["str"]] = {
+    "breast_cancer": [],
+    "caltech": [],
+    "compass": ["age_cat", "priors_count", "c_charge_degree"],
+    "diabetes": [],
+    "mnist": [],
+    "rhc": ["ca", "death", "sex", "dth30", "swang1", "dnr1", "ninsclas", "resp", "card", "neuro", "gastr", "renal", "meta",
+            "hema", "seps", "trauma", "ortho", "race", "income"],
+}
 
 
 class Dataset:
@@ -16,11 +28,24 @@ class Dataset:
             self,
             name: TDataset,
             directory: str = DEFAULT_DATA_DIR,
+            encode_categorical_variables: bool = True,
             lazy: bool = True
     ) -> None:
+        """Dataset is a class designed to handle datasets for machine learning tasks. It provides functionalities for loading,
+         transforming, and accessing training, validation, and test datasets.
+
+        :param name: The name of the dataset.
+        :param directory: The directory where the dataset files are located. Defaults to the DEFAULT_DATA_DIR.
+        :param encode_categorical_variables: Whether to encode categorical variables. Defaults to True.
+        :param lazy: Whether to lazy load the datasets. If True, the datasets are loaded only when accessed. Defaults to True.
+        """
         self.name = name
         self.directory = Path(directory)
+        self.encode_categorical_variables = encode_categorical_variables
         self.lazy = lazy
+
+        self._x_encoder = None
+        self._y_encoder = None
 
         sub_datasets = ["train", "valid", "test"]
         for ds in sub_datasets:
@@ -29,6 +54,29 @@ class Dataset:
         if not lazy:
             for ds in sub_datasets:
                 getattr(self, ds)
+
+    def _x_transform(self, x: pd.DataFrame) -> pd.DataFrame:
+        if self.encode_categorical_variables and categorical_columns[self.name]:
+            columns = x.columns
+            if not self._x_encoder:
+                self._x_encoder = OrdinalEncoder(
+                    handle_unknown="use_encoded_value",
+                    unknown_value=-1,
+                    encoded_missing_value=-1,
+                    dtype=int
+                ).fit(x)
+            x = pd.DataFrame(
+                data=self._x_encoder.transform(x),
+                columns=columns
+            )
+        return x
+
+    def _y_transform(self, y: pd.DataFrame) -> pd.DataFrame:
+        if y.shape[1] > 1:
+            if not self._y_encoder:
+                self._y_encoder = MultilabelHotEncoder().fit(y)
+            y = self._y_encoder.transform(y)
+        return y
 
     def _read_file(self, dataset: str) -> pd.DataFrame:
         return pd.read_csv(self.directory / f"{self.name}_{dataset}.csv", index_col=[0])
@@ -41,23 +89,42 @@ class Dataset:
             y = pd.DataFrame({"target": y})
         return x, y
 
+    def _get_x_y(self, dataset: Literal["train", "valid", "test"]) -> tuple[pd.DataFrame, pd.DataFrame]:
+        x, y = Dataset.x_y_split(self._read_file(dataset))
+        x = self._x_transform(x)
+        y = self._y_transform(y)
+        return x, y
+
     @property
     def train(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Training dataset."""
         if not self._train:
-            self._train = Dataset.x_y_split(self._read_file("train"))
+            self._train = self._get_x_y("train")
         return self._train
 
     @property
     def valid(self) -> tuple[pd.DataFrame, pd.DataFrame]:
-        if not self._test:
-            self._valid = Dataset.x_y_split(self._read_file("valid"))
+        """Validation dataset."""
+        if not self._valid:
+            self._valid = self._get_x_y("valid")
         return self._valid
 
     @property
     def test(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Testing dataset."""
         if not self._test:
-            self._test = Dataset.x_y_split(self._read_file("test"))
+            self._test = self._get_x_y("test")
         return self._test
+
+    @property
+    def x_cols(self) -> list[str]:
+        """List of feature columns"""
+        return self.train[0].columns.tolist()
+
+    @property
+    def y_cols(self) -> list[str]:
+        """List of label columns"""
+        return self.train[1].columns.tolist()
 
 
 def _save_dataframe(
@@ -131,7 +198,7 @@ def _download_breast_cancer(
     _split_dataframe_and_save(df=breast_cancer.frame, dataset_name="breast_cancer", directory=directory)
 
 
-def _download_rhs(
+def _download_rhc(
     directory: str = DEFAULT_DATA_DIR
 ) -> None:
     from io import StringIO
@@ -145,9 +212,8 @@ def _download_rhs(
     )
 
     df = pd.read_csv(StringIO(response.content.decode("utf-8")), index_col=[0])
-    df.insert(df.shape[1] - 1, "target1", df.pop("cat1"))
-    df.insert(df.shape[1] - 1, "target2", df.pop("cat2"))
-    _split_dataframe_and_save(df=df, dataset_name="rhs", directory=directory)
+    df.insert(df.shape[1] - 1, "target", df.pop("cat1"))
+    _split_dataframe_and_save(df=df, dataset_name="rhc", directory=directory)
 
 
 def _download_compass(
@@ -219,7 +285,7 @@ def _download_mnist(
             data=[pixels + [label] for pixels, label in zip(test[0], test[1]) if label in (4, 9)],
             columns=[f"x{i}" for i in range(784)] + ["target"]
         )
-        _save_dataframe(df=test_df, dataset_name=f"mnist_test", directory=directory)
+        _save_dataframe(df=test_df, dataset_name="mnist_test", directory=directory)
 
         train_valid = mnist.load_training()
         train_valid_df = pd.DataFrame(
@@ -233,8 +299,8 @@ def _download_mnist(
             test_size=test_df.shape[0],
             random_state=RANDOM_SEED
         )
-        _save_dataframe(df=train, dataset_name=f"mnist_train", directory=directory)
-        _save_dataframe(df=valid, dataset_name=f"mnist_valid", directory=directory)
+        _save_dataframe(df=train, dataset_name="mnist_train", directory=directory)
+        _save_dataframe(df=valid, dataset_name="mnist_valid", directory=directory)
 
 
 def _download_caltech(
@@ -282,7 +348,7 @@ def _download_caltech(
 
         df = pd.DataFrame(data=x, columns=[f"x{i + 1}" for i in range(len(x[0]))])
         df["target"] = y
-
+    df = df[df["target"].isin((62, 135))]
     _split_dataframe_and_save(df=df, dataset_name="caltech", directory=directory)
 
 
@@ -313,7 +379,7 @@ parser.add_argument("--silent", "-s", action=BooleanOptionalAction,
                     help="Supress displaying progress.")
 parser.add_argument("--dataset-names", "-n", default="all", help="Comma-separated list of dataset names to"
                                                                  " download. Allowable values are 'breast_cancer', "
-                                                                 "'caltech', 'compass', 'diabetes', 'mnist' and 'rhs'. "
+                                                                 "'caltech', 'compass', 'diabetes', 'mnist' and 'rhc'. "
                                                                  "Use 'all' to download all datasets")
 
 if __name__ == "__main__":
