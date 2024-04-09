@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import get_args, Literal, TypeAlias
 
 import pandas as pd
-from sklearn.preprocessing import OrdinalEncoder
+from sklearn.preprocessing import OrdinalEncoder, MinMaxScaler
 
 from protree.meta import RANDOM_SEED
 from protree.transformations import MultilabelHotEncoder
@@ -29,6 +29,7 @@ class Dataset:
             name: TDataset,
             directory: str = DEFAULT_DATA_DIR,
             encode_categorical_variables: bool = True,
+            normalise: bool = False,
             lazy: bool = True
     ) -> None:
         """Dataset is a class designed to handle datasets for machine learning tasks. It provides functionalities for loading,
@@ -42,10 +43,13 @@ class Dataset:
         self.name = name
         self.directory = Path(directory)
         self.encode_categorical_variables = encode_categorical_variables
+        self.normalise = normalise
         self.lazy = lazy
 
         self._x_encoder = None
         self._y_encoder = None
+
+        self._x_scaler = None
 
         sub_datasets = ["train", "valid", "test"]
         for ds in sub_datasets:
@@ -56,8 +60,8 @@ class Dataset:
                 getattr(self, ds)
 
     def _x_transform(self, x: pd.DataFrame) -> pd.DataFrame:
+        columns = x.columns
         if self.encode_categorical_variables and categorical_columns[self.name]:
-            columns = x.columns
             if not self._x_encoder:
                 self._x_encoder = OrdinalEncoder(
                     handle_unknown="use_encoded_value",
@@ -67,6 +71,13 @@ class Dataset:
                 ).fit(x)
             x = pd.DataFrame(
                 data=self._x_encoder.transform(x),
+                columns=columns
+            )
+        if self.normalise:
+            if not self._x_scaler:
+                self._x_scaler = MinMaxScaler().fit(x)
+            x = pd.DataFrame(
+                data=self._x_scaler.transform(x),
                 columns=columns
             )
         return x
@@ -128,21 +139,21 @@ class Dataset:
 
 
 def _save_dataframe(
-    df: pd.DataFrame,
-    dataset_name: str,
-    directory: str = DEFAULT_DATA_DIR
+        df: pd.DataFrame,
+        dataset_name: str,
+        directory: str = DEFAULT_DATA_DIR
 ) -> None:
     path = Path(directory) / f"{dataset_name}.csv"
     df.reset_index(drop=True).to_csv(path)
 
 
 def _split_dataframe_and_save(
-    df: pd.DataFrame,
-    dataset_name: str,
-    directory: str = DEFAULT_DATA_DIR,
-    train_size: float = 0.6,
-    valid_size: float = 0.2,
-    test_size: float = 0.2
+        df: pd.DataFrame,
+        dataset_name: str,
+        directory: str = DEFAULT_DATA_DIR,
+        train_size: float = 0.6,
+        valid_size: float = 0.2,
+        test_size: float = 0.2
 ) -> None:
     if train_size + valid_size + test_size != 1.0:
         raise ValueError("Sum of train, valid, and test sizes have to sum up to 1.0")
@@ -160,7 +171,7 @@ def _split_dataframe_and_save(
     valid, test = train_test_split(
         valid_test,
         stratify=valid_test[[y_column]],
-        train_size=valid_size/(valid_size + test_size),
+        train_size=valid_size / (valid_size + test_size),
         random_state=RANDOM_SEED
     )
 
@@ -170,7 +181,7 @@ def _split_dataframe_and_save(
 
 
 def _download_diabetes(
-    directory: str = DEFAULT_DATA_DIR
+        directory: str = DEFAULT_DATA_DIR
 ) -> None:
     from io import StringIO
     from requests import get
@@ -190,7 +201,7 @@ def _download_diabetes(
 
 
 def _download_breast_cancer(
-    directory: str = DEFAULT_DATA_DIR
+        directory: str = DEFAULT_DATA_DIR
 ) -> None:
     from sklearn.datasets import load_breast_cancer
 
@@ -199,7 +210,7 @@ def _download_breast_cancer(
 
 
 def _download_rhc(
-    directory: str = DEFAULT_DATA_DIR
+        directory: str = DEFAULT_DATA_DIR
 ) -> None:
     from io import StringIO
     from requests import get
@@ -217,7 +228,7 @@ def _download_rhc(
 
 
 def _download_compass(
-    directory: str = DEFAULT_DATA_DIR
+        directory: str = DEFAULT_DATA_DIR
 ) -> None:
     from io import StringIO
     from requests import get
@@ -254,7 +265,7 @@ def _download_compass(
 
 
 def _download_mnist(
-    directory: str = DEFAULT_DATA_DIR
+        directory: str = DEFAULT_DATA_DIR
 ) -> None:
     import gzip
     from tempfile import TemporaryDirectory
@@ -304,7 +315,7 @@ def _download_mnist(
 
 
 def _download_caltech(
-    directory: str = DEFAULT_DATA_DIR
+        directory: str = DEFAULT_DATA_DIR
 ) -> None:
     from tempfile import TemporaryDirectory
 
@@ -353,9 +364,9 @@ def _download_caltech(
 
 
 def download_all(
-    directory: str = DEFAULT_DATA_DIR,
-    dataset_names: list[Literal["all"] | TDataset] = "all",
-    verbose: bool = True
+        directory: str = DEFAULT_DATA_DIR,
+        dataset_names: list[Literal["all"] | TDataset] = "all",
+        verbose: bool = True
 ) -> None:
     path = Path(directory)
     path.mkdir(parents=True, exist_ok=True)
