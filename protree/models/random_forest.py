@@ -347,3 +347,64 @@ class SgTspRf(SmaTspRf):
             prototypes[cls] = x[y.values == cls].iloc[prototypes[cls], :]
 
         return prototypes
+
+
+class APete(SmaTspRf):
+    def __init__(
+            self,
+            beta: float = 0.05,
+            n_estimators: int = 100,
+            criterion: Literal["gini", "entropy", "log_loss"] = "gini",
+            max_depth: int | None = None,
+            min_samples_split: int = 2,
+            min_samples_leaf: int | float = 1,
+            min_weight_fraction_leaf: int | float = 0.0,
+            max_features: Literal["sqrt", "log2"] | int | float | None = "sqrt",
+            max_leaf_nodes: int | None = None,
+            min_impurity_decrease: float = 0.0,
+            bootstrap: bool = True,
+            oob_score: Callable[[np.ndarray, np.ndarray], float] | bool = False,
+            n_jobs: int | None = None,
+            random_state: int | None = RANDOM_SEED,
+            verbose: int = 0,
+            warm_start: bool = False,
+            class_weight: Literal["balanced", "balanced_subsample"] | dict | list[dict] | None = None,
+            ccp_alpha: float = 0.0,
+            max_samples: int | float | None = None
+    ) -> None:
+        super().__init__(n_estimators=n_estimators, criterion=criterion, max_depth=max_depth, class_weight=class_weight,
+                         min_samples_split=min_samples_split, min_samples_leaf=min_samples_leaf, ccp_alpha=ccp_alpha,
+                         min_weight_fraction_leaf=min_weight_fraction_leaf, max_features=max_features, max_samples=max_samples,
+                         max_leaf_nodes=max_leaf_nodes, min_impurity_decrease=min_impurity_decrease, bootstrap=bootstrap,
+                         oob_score=oob_score, n_jobs=n_jobs, random_state=random_state, verbose=verbose, warm_start=warm_start,
+                         n_prototypes=-1)
+        self.beta = beta
+
+    def _find_prototype(self, distances: dict[int | str, np.ndarray], prototypes: dict[int | str, list[int]]
+                        ) -> tuple[int | float, int, float]:
+        prototype: tuple[float, int | str, int] = (-np.inf, -1, -1)
+        for cls in distances:
+            idx, improvement = self._find_classwise_prototype(distances[cls], prototypes[cls])
+            if improvement > prototype[0]:
+                prototype = (improvement, cls, idx)
+        return prototype[1], prototype[2], prototype[0]
+
+    def select_prototypes(self, x: pd.DataFrame, y: pd.DataFrame) -> dict[int | str, pd.DataFrame]:
+        prev_improvement = 0.0
+        classes = set()
+        for col in y:
+            classes.update(set(y[col].unique()))
+        prototypes = {cls: [] for cls in classes}
+
+        distances = self._create_distance_matrices(x, y, classes)
+        while True:
+            cls, idx, improvement = self._find_prototype(distances, prototypes)
+            prototypes[cls].append(idx)
+
+            protos = {}
+            for cls in classes:
+                protos[cls] = x[y.values == cls].iloc[prototypes[cls], :]
+
+            if np.abs(prev_improvement - improvement) / improvement <= self.beta:
+                return protos
+            prev_improvement = improvement
