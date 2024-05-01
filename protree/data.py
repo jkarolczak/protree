@@ -12,7 +12,7 @@ from protree.transformations import MultilabelHotEncoder
 DEFAULT_DATA_DIR = os.environ.get("DEFAULT_DATA_DIR", "./data")
 
 TDataset: TypeAlias = Literal["breast_cancer", "caltech", "compass", "diabetes", "mnist", "rhc"]
-categorical_columns: dict[TDataset, list["str"]] = {
+categorical_columns: dict[TDataset, list[str]] = {
     "breast_cancer": [],
     "caltech": [],
     "compass": ["age_cat", "priors_count", "c_charge_degree"],

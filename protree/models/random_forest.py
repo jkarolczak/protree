@@ -6,6 +6,7 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier as _SKLearnRandomForestClassifier
 
 from meta import RANDOM_SEED
+from metrics.classification import balanced_accuracy
 from models.utils import parse_input, _type_to_np_dtype
 
 C = 1000
@@ -92,12 +93,7 @@ class PrototypicRandomForestClassifier(_SKLearnRandomForestClassifier):
     @staticmethod
     def _score(y: pd.DataFrame, y_hat: np.ndarray) -> float:
         y = y.values.squeeze(1)
-        acc = 0
-        for label in np.unique(y):
-            mask = (y == label)
-            acc_partial = (y[mask] == y_hat[mask]).mean()
-            acc += (acc_partial * mask.sum()) / len(y)
-        return acc
+        return balanced_accuracy(y, y_hat)
 
     def score_with_prototypes(self, x: pd.DataFrame, y: pd.DataFrame, prototypes: dict[int | str, pd.DataFrame]) -> float:
         y_hat = self.predict_with_prototypes(x, prototypes)
