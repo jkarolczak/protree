@@ -2,24 +2,12 @@ from argparse import ArgumentParser, BooleanOptionalAction
 
 import wandb
 
-from models.random_forest import SgTspRf
 from protree.data import Dataset, DEFAULT_DATA_DIR
 from protree.meta import N_JOBS
-
-
-def parse_int_float_str(value) -> int | float | str:
-    try:
-        return int(value)
-    except:
-        pass
-
-    try:
-        return float(value)
-    except:
-        pass
-
-    return value
-
+from protree.metrics.group import (fidelity_with_model, contribution, entropy_hubness, mean_in_distribution,
+                                   mean_out_distribution)
+from protree.models.random_forest import SmaTspRf
+from protree.utils import parse_int_float_str, pprint_dict
 
 parser = ArgumentParser()
 parser.add_argument("dataset", choices=["breast_cancer", "caltech", "compass", "diabetes", "mnist", "rhc"],
@@ -39,9 +27,10 @@ if __name__ == "__main__":
     ds = Dataset(
         name=args.dataset,
         directory=args.directory,
-        lazy=False
+        lazy=False,
+        normalise=True
     )
-    model = SgTspRf(
+    model = SmaTspRf(
         n_prototypes=args.n_prototypes,
         n_estimators=args.n_trees,
         max_features=max_features,
@@ -56,32 +45,29 @@ if __name__ == "__main__":
                 "model": type(model).__name__,
                 "dataset": args.dataset,
                 "n_estimators": args.n_trees,
-                "max_features": max_features
+                "max_features": max_features,
+                "n_prototypes": args.n_prototypes,
             }
         )
 
     model.fit(*ds.train)
     prototypes = model.select_prototypes(*ds.train)
 
-    score_valid_with_prototypes = model.score_with_prototypes(ds.valid[0], ds.valid[1], prototypes)
-    score_valid = model.score(ds.valid[0], ds.valid[1])
-
-    score_test_with_prototypes = model.score_with_prototypes(ds.test[0], ds.test[1], prototypes)
-    score_test = model.score(ds.test[0], ds.test[1])
+    statistics = {
+        "n prototypes": sum([len(c) for c in prototypes.values()]),
+        "score/valid/default": model.score(ds.valid[0], ds.valid[1]),
+        "score/valid/prototypes": model.score_with_prototypes(ds.valid[0], ds.valid[1], prototypes),
+        "score/test/default": model.score(ds.test[0], ds.test[1]),
+        "score/test/prototypes": model.score_with_prototypes(ds.test[0], ds.test[1], prototypes),
+        "score/train/fidelity (with model)": fidelity_with_model(prototypes, model, ds.train[0]),
+        "score/train/contribution": contribution(prototypes, model, ds.train[0]),
+        "score/train/hubness": entropy_hubness(prototypes, model, ds.train[0], ds.train[1]),
+        "score/train/mean_in_distribution": mean_in_distribution(prototypes, model, ds.train[0], ds.train[1]),
+        "score/train/mean_out_distribution": mean_out_distribution(prototypes, model, ds.train[0], ds.train[1])
+    }
 
     if args.log:
-        wandb.log(
-            {
-                "score/valid/default": score_valid,
-                "score/valid/prototypes": score_valid_with_prototypes,
-                "score/test/default": score_test,
-                "score/test/prototypes": score_test_with_prototypes,
-            }
-        )
-
+        wandb.log(statistics)
         wandb.finish(quiet=True)
     else:
-        print(f"score/valid/default: {score_valid:2.4f}")
-        print(f"score/valid/prototypes: {score_valid_with_prototypes:2.4f}")
-        print(f"score/test/default: {score_test:2.4f}")
-        print(f"score/test/prototypes: {score_test_with_prototypes:2.4f}")
+        pprint_dict(statistics)
