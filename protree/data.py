@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 import os
 from argparse import ArgumentParser, BooleanOptionalAction
 from pathlib import Path
 from typing import get_args, Literal, TypeAlias
 
+import numpy as np
 import pandas as pd
+from scipy.stats import entropy
 from sklearn.preprocessing import OrdinalEncoder, MinMaxScaler
 
 from protree.meta import RANDOM_SEED
@@ -21,6 +25,35 @@ categorical_columns: dict[TDataset, list[str]] = {
     "rhc": ["ca", "death", "sex", "dth30", "swang1", "dnr1", "ninsclas", "resp", "card", "neuro", "gastr", "renal", "meta",
             "hema", "seps", "trauma", "ortho", "race", "income"],
 }
+
+
+class BinaryScaler:
+    def __init__(
+            self
+    ) -> None:
+        self.mapper: dict[str, float] = {}
+
+    def fit(self, x: pd.DataFrame, y: pd.DataFrame) -> BinaryScaler:
+        binary_columns = x.columns[x.nunique() == 2]
+        for c in binary_columns:
+            conditional_entropies = []
+            for cls in y["target"].unique():
+                mask = y["target"] == cls
+                p_x_given_y = x[mask].loc[:, c].values.mean()
+                entropy_x_given_y = entropy([p_x_given_y, 1 - p_x_given_y])
+                weight = mask.sum() / len(y)
+                conditional_entropies.append(entropy_x_given_y * weight)
+            self.mapper[c] = (1 - sum(conditional_entropies)) / np.log(y["target"].nunique())
+        return self
+
+    def transform(self, x: pd.DataFrame) -> pd.DataFrame:
+        for c in self.mapper:
+            x[c] *= self.mapper[c]
+        return x
+
+    def fit_transform(self, x: pd.DataFrame, y: pd.DataFrame) -> pd.DataFrame:
+        self.fit(x, y)
+        return self.transform(x)
 
 
 class Dataset:
@@ -47,6 +80,7 @@ class Dataset:
         self.lazy = lazy
 
         self._x_encoder = None
+        self._x_binary_encoder = None
         self._y_encoder = None
 
         self._x_scaler = None
@@ -59,7 +93,7 @@ class Dataset:
             for ds in sub_datasets:
                 getattr(self, ds)
 
-    def _x_transform(self, x: pd.DataFrame) -> pd.DataFrame:
+    def _x_transform(self, x: pd.DataFrame, y: pd.DataFrame) -> pd.DataFrame:
         columns = x.columns
         if self.encode_categorical_variables and categorical_columns[self.name]:
             if not self._x_encoder:
@@ -76,10 +110,10 @@ class Dataset:
         if self.normalise:
             if not self._x_scaler:
                 self._x_scaler = MinMaxScaler().fit(x)
-            x = pd.DataFrame(
-                data=self._x_scaler.transform(x),
-                columns=columns
-            )
+            if not self._x_binary_encoder:
+                self._x_binary_encoder = BinaryScaler().fit(x, y)
+            x = pd.DataFrame(data=self._x_scaler.transform(x), columns=columns)
+            x = pd.DataFrame(data=self._x_binary_encoder.transform(x), columns=columns)
         return x
 
     def _y_transform(self, y: pd.DataFrame) -> pd.DataFrame:
@@ -102,7 +136,7 @@ class Dataset:
 
     def _get_x_y(self, dataset: Literal["train", "valid", "test"]) -> tuple[pd.DataFrame, pd.DataFrame]:
         x, y = Dataset.x_y_split(self._read_file(dataset))
-        x = self._x_transform(x)
+        x = self._x_transform(x, y)
         y = self._y_transform(y)
         return x, y
 
