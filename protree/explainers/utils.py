@@ -2,6 +2,9 @@ from typing import Dict, Any, Type
 
 import numpy as np
 import pandas as pd
+from river.forest import ARFClassifier
+from river.tree import HoeffdingTreeClassifier
+from river.tree.nodes.branch import DTBranch
 
 
 def _1d_np_to_2d_np(x: np.ndarray) -> np.ndarray:
@@ -33,3 +36,22 @@ def _type_to_np_dtype(x: Dict[Any, Any]) -> Type | str:
     if isinstance(val, str):
         return "<U50"
     return type(val)
+
+
+def predict_leaf_one(model: ARFClassifier | HoeffdingTreeClassifier, x: dict[str, float | int]) -> int:
+    if isinstance(model, ARFClassifier):
+        return [predict_leaf_one(model_, x) for model_ in model]
+
+    if model._root is not None:
+        if isinstance(model._root, DTBranch):
+            leaf = model._root.traverse(x, until_leaf=True)
+        else:
+            leaf = model._root
+    return id(leaf)
+
+
+def iloc(x: pd.DataFrame | list[Any], indices: list[int]) -> pd.DataFrame | list[Any]:
+    if isinstance(x, pd.DataFrame):
+        return x.iloc[indices, :]
+    if isinstance(x, list):
+        return [x_ for i, x_ in enumerate(x) if i in indices]

@@ -4,7 +4,8 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
 
-from explainers.tree_distance import IExplainer
+import protree.explainers.utils
+from protree.explainers.tree_distance import IExplainer
 from protree.explainers.utils import _type_to_np_dtype
 from protree.meta import RANDOM_SEED
 
@@ -42,7 +43,7 @@ class KMeans:
             cluster_centers = self._kmeans[c].cluster_centers_
             distances = np.linalg.norm(x_partial.values[:, np.newaxis, :] - cluster_centers[np.newaxis, :], axis=2)
             closest_indices = np.argmin(distances, axis=0)
-            self.prototypes[c] = x_partial.iloc[closest_indices]
+            self.prototypes[c] = protree.explainers.utils.iloc[closest_indices]
 
     def fit(self, x: pd.DataFrame, y: pd.DataFrame) -> KMeans:
         if not self.prototypes:

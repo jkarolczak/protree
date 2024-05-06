@@ -1,33 +1,41 @@
 import warnings
 from abc import ABC
-from typing import Iterable
+from typing import Iterable, TypeAlias
 
 import numpy as np
 import pandas as pd
+from river.forest import ARFClassifier
 from sklearn.ensemble import RandomForestClassifier as _SKLearnRandomForestClassifier
 
-from explainers.utils import parse_input, _type_to_np_dtype
-from metrics.classification import balanced_accuracy
+from protree.explainers.utils import iloc
+from protree.explainers.utils import parse_input, _type_to_np_dtype, predict_leaf_one
+from protree.metrics.classification import balanced_accuracy
+
+TModel: TypeAlias = ARFClassifier | _SKLearnRandomForestClassifier
+TDataPoint: TypeAlias = pd.Series | np.ndarray | dict[str, int | float]
+TDataBatch: TypeAlias = pd.DataFrame | np.ndarray | list[dict[str, int | float]]
+TTarget: TypeAlias = pd.DataFrame | list[int | str]
+TPrototypes: TypeAlias = dict[str | int, pd.DataFrame | dict[str, int | float]]
 
 
 class IModelAdapter(ABC):
     @property
-    def n_estimators(self) -> int:
+    def n_trees(self) -> int:
         pass
 
-    def get_leave_indices(self, x: pd.DataFrame | np.ndarray) -> np.ndarray:
+    def get_leave_indices(self, x: TDataBatch) -> np.ndarray:
         pass
 
-    def get_model_predictions(self, x: pd.DataFrame | np.ndarray) -> np.ndarray:
+    def get_model_predictions(self, x: TDataBatch) -> np.ndarray:
         pass
 
 
 class SKLearnAdapter(IModelAdapter):
-    def __init__(self, model: _SKLearnRandomForestClassifier) -> None:
+    def __init__(self, model: TModel) -> None:
         self.model = model
 
     @property
-    def n_estimators(self) -> int:
+    def n_trees(self) -> int:
         return self.model.n_estimators
 
     def get_leave_indices(self, x: pd.DataFrame | np.ndarray) -> np.ndarray:
@@ -41,65 +49,73 @@ class SKLearnAdapter(IModelAdapter):
             return self.model.predict(parse_input(x))
 
 
+class RiverAdapter(IModelAdapter):
+    def __init__(self, model: ARFClassifier) -> None:
+        self.model = model
+
+    @property
+    def n_trees(self) -> int:
+        return self.model.n_models
+
+    def get_leave_indices(self, x: list[dict[str, int | float]]) -> np.ndarray:
+        return np.array([predict_leaf_one(self.model, x_) for x_ in x])
+
+    def get_model_predictions(self, x: list[dict[str, int | float]]) -> np.ndarray:
+        return np.array([self.model.predict_one(x_) for x_ in x])
+
+
 class ModelAdapterBuilder:
-    def __init__(self, model: _SKLearnRandomForestClassifier) -> None:
+    def __init__(self, model: TModel) -> None:
         self.model = model
 
     def __call__(self, *args, **kwargs) -> IModelAdapter:
         if isinstance(self.model, _SKLearnRandomForestClassifier):
             return SKLearnAdapter(model=self.model)
+        elif isinstance(self.model, ARFClassifier):
+            return RiverAdapter(model=self.model)
         raise ValueError("Unsupported model class.")
 
 
 class IExplainer(ABC):
-    def __init__(self, model: _SKLearnRandomForestClassifier, *args, **kwargs) -> None:
+    def __init__(self, model: TModel, *args, **kwargs) -> None:
         self.model = ModelAdapterBuilder(model)()
 
-    def par_similarity(self, x1: np.ndarray | pd.Series, x2: np.ndarray | pd.Series) -> float:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+    def par_similarity(self, x1: TDataPoint, x2: TDataPoint) -> float:
+        nodes1 = self.model.get_leave_indices(parse_input(x1))
+        nodes2 = self.model.get_leave_indices(parse_input(x2))
 
-            nodes1 = self.model.get_leave_indices(parse_input(x1))
-            nodes2 = self.model.get_leave_indices(parse_input(x2))
+        return sum((nodes1 == nodes2)[0]) / self.model.n_trees
 
-        return sum((nodes1 == nodes2)[0]) / self.model.n_estimators
+    def similarity_matrix(self, batch: TDataBatch) -> np.ndarray:
+        nodes = self.model.get_leave_indices(batch)
 
-    def similarity_matrix(self, df: pd.DataFrame) -> np.ndarray:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            nodes = self.model.get_leave_indices(df)
-
-        shape = df.shape[0]
+        shape = len(batch)
         matrix = np.zeros((shape, shape), dtype=float)
         for i in range(shape):
             matrix[i] = (nodes[i] == nodes).sum(axis=1)
-        matrix /= self.model.n_estimators
+        matrix /= self.model.n_trees
         return matrix
 
-    def distance_matrix(self, df: pd.DataFrame) -> np.ndarray:
-        return 1 - self.similarity_matrix(df)
+    def distance_matrix(self, batch: TDataBatch) -> np.ndarray:
+        return 1 - self.similarity_matrix(batch)
 
-    def _create_distance_matrices(self, x: pd.DataFrame, y: pd.DataFrame, classes: Iterable[int | str]
+    def _create_distance_matrices(self, x: TDataBatch, y: TTarget, classes: Iterable[int | str]
                                   ) -> dict[int | str, np.ndarray]:
         distances = {cls: None for cls in classes}
         for cls in classes:
-            class_x = x[(y == cls).any(axis=1)]
+            class_x = IExplainer.get_x_belonging_to_cls(x, y, cls)
             distances[cls] = self.distance_matrix(class_x)
         return distances
 
-    def get_prototypes_predictions(self, x: pd.DataFrame, prototypes: dict[int | str, pd.DataFrame]) -> np.ndarray:
+    def get_prototypes_predictions(self, x: TDataBatch, prototypes: TPrototypes) -> np.ndarray:
         predictions = (np.ones((len(x), 1)) * (-1)).astype(_type_to_np_dtype(prototypes))
         similarity = np.zeros((len(x)))
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            x_nodes = self.model.get_leave_indices(x)
+        x_nodes = self.model.get_leave_indices(x)
 
         for cls in prototypes:
-            for _, prototype in prototypes[cls].iterrows():
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    prototype_leaves = self.model.get_leave_indices([prototype])
-                prototype_similarity = (prototype_leaves == x_nodes).sum(axis=1) / self.model.n_estimators
+            for _, prototype in (prototypes[cls].iterrows() if hasattr(prototypes[cls], "iterrows") else prototypes[cls]):
+                prototype_leaves = self.model.get_leave_indices([prototype])
+                prototype_similarity = (prototype_leaves == x_nodes).sum(axis=1) / self.model.n_trees
                 mask = prototype_similarity > similarity
                 predictions[mask] = cls
                 similarity[mask] = prototype_similarity[mask]
@@ -107,10 +123,13 @@ class IExplainer(ABC):
 
     @staticmethod
     def _score(y: pd.DataFrame, y_hat: np.ndarray) -> float:
-        y = y.values.squeeze(1)
+        if isinstance(y, pd.DataFrame):
+            y = y.values.squeeze(1)
+        elif isinstance(y, list):
+            y = np.array(y)
         return balanced_accuracy(y, y_hat)
 
-    def score_with_prototypes(self, x: pd.DataFrame, y: pd.DataFrame, prototypes: dict[int | str, pd.DataFrame]) -> float:
+    def score_with_prototypes(self, x: TDataBatch, y: TTarget, prototypes: TPrototypes) -> float:
         y_hat = self.get_prototypes_predictions(x, prototypes)
         return IExplainer._score(y, y_hat)
 
@@ -118,9 +137,26 @@ class IExplainer(ABC):
         y_hat = self.model.get_model_predictions(x)
         return IExplainer._score(y, y_hat)
 
+    def get_classes(self, y: TTarget) -> set[int | str]:
+        if isinstance(y, list):
+            return set(y)
+        if isinstance(y, pd.DataFrame):
+            classes = set()
+            for col in y:
+                classes.update(set(y[col].unique()))
+            return classes
+
+    @staticmethod
+    def get_x_belonging_to_cls(x: TDataBatch, y: TTarget, cls: int | str) -> TDataBatch:
+        if isinstance(x, pd.DataFrame) and isinstance(y, pd.DataFrame):
+            return x[(y == cls).any(axis=1)]
+        if isinstance(x, list) and isinstance(y, list):
+            return [x_ for x_, y_ in zip(x, y) if y_ == cls]
+        raise ValueError("x and y have to both be of the same type, one of pd.DataFrame or list")
+
 
 class G_KM(IExplainer):
-    def __init__(self, model: _SKLearnRandomForestClassifier, n_prototypes: int = 3, *args, **kwargs) -> None:
+    def __init__(self, model: TModel, n_prototypes: int = 3, *args, **kwargs) -> None:
         super().__init__(model, *args, **kwargs)
         self.n_prototypes = n_prototypes
 
@@ -144,23 +180,20 @@ class G_KM(IExplainer):
             )
         return prototypes
 
-    def select_prototypes(self, x: pd.DataFrame, y: pd.DataFrame) -> dict[int | str, pd.DataFrame]:
-        classes = set()
-        for col in y:
-            classes.update(set(y[col].unique()))
+    def select_prototypes(self, x: TDataBatch, y: TTarget) -> TPrototypes:
+        classes = self.get_classes(y)
         prototypes = {cls: [] for cls in classes}
-
         distances = self._create_distance_matrices(x, y, classes)
 
         for cls in classes:
-            class_x = x[(y == cls).any(axis=1)]
+            class_x = IExplainer
             indices = self._find_single_class_prototypes(distances[cls])
-            prototypes[cls] = class_x.iloc[indices]
+            prototypes[cls] = iloc(class_x, indices)
         return prototypes
 
 
 class SM_A(IExplainer):
-    def __init__(self, model: _SKLearnRandomForestClassifier, n_prototypes: int = 3, *args, **kwargs) -> None:
+    def __init__(self, model: TModel, n_prototypes: int = 3, *args, **kwargs) -> None:
         super().__init__(model, *args, **kwargs)
         self.n_prototypes = int(n_prototypes)
 
@@ -180,8 +213,7 @@ class SM_A(IExplainer):
         original_idx = np.where(~mask)[0][np.argmin(candidate_distances)]
         return original_idx, improvement
 
-    def _find_prototype(self, distances: dict[int | str, np.ndarray], prototypes: dict[int | str, list[int]]
-                        ) -> tuple[int | float, int]:
+    def _find_prototype(self, distances: dict[int | str, np.ndarray], prototypes: TPrototypes) -> tuple[int | float, int]:
         prototype: tuple[float, int | str, int] = (-np.inf, -1, -1)
         for cls in distances:
             idx, improvement = self._find_classwise_prototype(distances[cls], prototypes[cls])
@@ -189,10 +221,8 @@ class SM_A(IExplainer):
                 prototype = (improvement, cls, idx)
         return prototype[1], prototype[2]
 
-    def select_prototypes(self, x: pd.DataFrame, y: pd.DataFrame) -> dict[int | str, pd.DataFrame]:
-        classes = set()
-        for col in y:
-            classes.update(set(y[col].unique()))
+    def select_prototypes(self, x: TDataBatch, y: TTarget) -> TPrototypes:
+        classes = self.get_classes(y)
         prototypes = {cls: [] for cls in classes}
 
         distances = self._create_distance_matrices(x, y, classes)
@@ -201,14 +231,14 @@ class SM_A(IExplainer):
             prototypes[cls].append(idx)
 
         for cls in classes:
-            prototypes[cls] = x[y.values == cls].iloc[prototypes[cls], :]
+            prototypes[cls] = iloc(IExplainer.get_x_belonging_to_cls(x, y, cls), prototypes[cls])
 
         return prototypes
 
 
 class SM_WA(SM_A):
-    def __init__(self, n_prototypes: int = 3, *args, **kwargs) -> None:
-        super().__init__(n_prototypes=n_prototypes, *args, **kwargs)
+    def __init__(self, model: TModel, n_prototypes: int = 3, *args, **kwargs) -> None:
+        super().__init__(model=model, n_prototypes=n_prototypes, *args, **kwargs)
 
     def _find_prototype(self, distances: dict[int | str, np.ndarray], prototypes: dict[int | str, list[int]]
                         ) -> tuple[int | float, int]:
@@ -225,7 +255,7 @@ class SG(SM_A):
     def __init__(self, n_prototypes: int = 3, *args, **kwargs) -> None:
         super().__init__(n_prototypes=n_prototypes, *args, **kwargs)
 
-    def _find_prototype(self, prototypes: dict[int | str, list[int]], x: pd.DataFrame, y: pd.DataFrame, accuracy: float
+    def _find_prototype(self, prototypes: TPrototypes, x: TDataBatch, y: TTarget, accuracy: float
                         ) -> tuple[int | str, int, float]:
         prototype: tuple[int | str, int] = (-1, -1)
         for cls in prototypes:
@@ -235,16 +265,14 @@ class SG(SM_A):
                     temp_prototypes = prototypes.copy()
                     temp_prototypes[cls].append(idx)
                     for _cls in temp_prototypes:
-                        temp_prototypes[_cls] = x[y.values == _cls].iloc[temp_prototypes[_cls], :]
+                        temp_prototypes[_cls] = iloc(IExplainer.get_x_belonging_to_cls(x, y, cls), temp_prototypes[_cls])
                     temp_accuracy = self.score_with_prototypes(x, y, temp_prototypes)
                     if temp_accuracy > accuracy:
                         prototype = (cls, idx)
         return prototype[1], prototype[2], accuracy
 
-    def select_prototypes(self, x: pd.DataFrame, y: pd.DataFrame) -> dict[int | str, pd.DataFrame]:
-        classes = set()
-        for col in y:
-            classes.update(set(y[col].unique()))
+    def select_prototypes(self, x: TPrototypes, y: TTarget) -> TPrototypes:
+        classes = self.get_classes(y)
         prototypes = {cls: [] for cls in classes}
         accuracy = 0
 
@@ -253,13 +281,13 @@ class SG(SM_A):
             prototypes[cls].append(idx)
 
         for cls in classes:
-            prototypes[cls] = x[y.values == cls].iloc[prototypes[cls], :]
+            prototypes[cls] = iloc(IExplainer.get_x_belonging_to_cls(x, y, cls), prototypes[cls])
 
         return prototypes
 
 
 class APete(SM_A):
-    def __init__(self, model: _SKLearnRandomForestClassifier, beta: float = 0.05) -> None:
+    def __init__(self, model: TModel, beta: float = 0.05) -> None:
         super().__init__(model)
         self.beta = float(beta)
 
@@ -276,11 +304,9 @@ class APete(SM_A):
                 prototype_cls = cls
         return prototype_cls, prototype_idx, delta_prim
 
-    def select_prototypes(self, x: pd.DataFrame, y: pd.DataFrame) -> dict[int | str, pd.DataFrame]:
+    def select_prototypes(self, x: TDataBatch, y: TTarget) -> TPrototypes:
         prev_improvement = 0.0
-        classes = set()
-        for col in y:
-            classes.update(set(y[col].unique()))
+        classes = self.get_classes(y)
         prototypes = {cls: [] for cls in classes}
 
         distances = self._create_distance_matrices(x, y, classes)
@@ -290,7 +316,7 @@ class APete(SM_A):
 
             protos = {}
             for cls in classes:
-                protos[cls] = x[y.values == cls].iloc[prototypes[cls], :]
+                protos[cls] = iloc(IExplainer.get_x_belonging_to_cls(x, y, cls), prototypes[cls])
 
             if np.abs(prev_improvement - improvement) / improvement <= self.beta:
                 return protos
