@@ -9,6 +9,8 @@ def _1d_np_to_2d_np(x: np.ndarray) -> np.ndarray:
 
 
 def parse_input(x: np.ndarray | pd.Series | pd.DataFrame) -> np.ndarray:
+    if isinstance(x, list) and len(x) == 1:
+        return np.array(x)
     match type(x):
         case np.ndarray:
             match len(x.shape):
@@ -23,7 +25,7 @@ def parse_input(x: np.ndarray | pd.Series | pd.DataFrame) -> np.ndarray:
         case pd.DataFrame:
             return x.to_numpy()
         case _:
-            raise TypeError("Invalid input type.")
+            raise TypeError(f"Invalid input type: {type(x)}.")
 
 
 def _type_to_np_dtype(x: Dict[Any, Any]) -> Type | str:
