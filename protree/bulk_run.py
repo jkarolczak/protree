@@ -22,7 +22,7 @@ import os
 # (4, 3, 5, 5, 10, 3)
 
 if __name__ == "__main__":
-    command_base = "python protree/experiment.py --log -t 1000 -d ./data "
+    command_base = "python protree/experiment-static.py --log -t 1000 -d ./data "
     for p, k, dataset in zip(
             (0.7, 0.33, 0.5, 7, "sqrt", "sqrt"),
             (4, 3, 5, 5, 10, 3),

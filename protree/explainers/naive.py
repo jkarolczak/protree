@@ -4,12 +4,12 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
 
-from meta import RANDOM_SEED
-from models.random_forest import PrototypicRandomForestClassifier
-from models.utils import _type_to_np_dtype
+from explainers.tree_distance import IExplainer
+from protree.explainers.utils import _type_to_np_dtype
+from protree.meta import RANDOM_SEED
 
 
-class PrototypicKMeans:
+class KMeans:
     def __init__(
             self,
             n_prototypes: int = 3,
@@ -20,7 +20,9 @@ class PrototypicKMeans:
             verbose: int = 0,
             random_state: int | None = RANDOM_SEED,
             copy_x: bool = True,
-            algorithm: str = "lloyd"
+            algorithm: str = "lloyd",
+            *args,
+            **kwargs
     ) -> None:
         self.prototypes = {}
         self._kmeans = {}
@@ -42,7 +44,7 @@ class PrototypicKMeans:
             closest_indices = np.argmin(distances, axis=0)
             self.prototypes[c] = x_partial.iloc[closest_indices]
 
-    def fit(self, x: pd.DataFrame, y: pd.DataFrame) -> PrototypicKMeans:
+    def fit(self, x: pd.DataFrame, y: pd.DataFrame) -> KMeans:
         if not self.prototypes:
             self._fit_select_prototypes(x, y)
         return self
@@ -66,4 +68,4 @@ class PrototypicKMeans:
 
     def score_with_prototypes(self, x: pd.DataFrame, y: pd.DataFrame, prototypes: dict[int | str, pd.DataFrame]) -> float:
         y_hat = self.predict_with_prototypes(x, prototypes)
-        return PrototypicRandomForestClassifier._score(y, y_hat)
+        return IExplainer._score(y, y_hat)

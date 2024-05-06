@@ -3,14 +3,14 @@ from copy import deepcopy
 import numpy as np
 import pandas as pd
 
-from models.random_forest import PrototypicRandomForestClassifier
+from protree.explainers.tree_distance import IExplainer
 
 
 def individual_contribution(
         prototypes: dict[int | str, pd.DataFrame],
         cls: str | int,
         idx: int,
-        model: PrototypicRandomForestClassifier,
+        explainer: IExplainer,
         x: pd.DataFrame
 ) -> float:
     from protree.metrics.group import fidelity_with_model
@@ -21,7 +21,7 @@ def individual_contribution(
     if not sum([len(c) for c in prototypes_without.values()]):
         raise ValueError("Cannot find the prototype of given index in the given class.")
 
-    result = fidelity_with_model(prototypes, model, x) - fidelity_with_model(prototypes_without, model, x)
+    result = fidelity_with_model(prototypes, explainer, x) - fidelity_with_model(prototypes_without, explainer, x)
     return result
 
 
@@ -29,14 +29,14 @@ def voting_frequency(
         prototypes: dict[int | str, pd.DataFrame],
         cls: str | int,
         idx: int,
-        model: PrototypicRandomForestClassifier,
+        explainer: IExplainer,
         x: pd.DataFrame
 ) -> float:
     prototypes_flat = pd.concat([prototypes[c] for c in prototypes])
     re_idx = prototypes_flat.index.to_list().index(idx)
 
-    x_leaves = model.apply(x)
-    proto_leaves = model.apply(prototypes_flat)
+    x_leaves = explainer.model.get_leave_indices(x)
+    proto_leaves = explainer.model.get_leave_indices(prototypes_flat)
     neighbourhood = []
     for i in range(len(proto_leaves)):
         neighbourhood.append((x_leaves == proto_leaves[i]).sum(axis=1))
@@ -47,17 +47,17 @@ def correct_votes(
         prototypes: dict[int | str, pd.DataFrame],
         cls: str | int,
         idx: int,
-        model: PrototypicRandomForestClassifier,
+        explainer: IExplainer,
         x: pd.DataFrame
 ) -> float:
     prototypes_flat = pd.concat([prototypes[c] for c in prototypes])
     re_idx = prototypes_flat.index.to_list().index(idx)
 
-    classification = model.predict(x)
+    classification = explainer.model.predict(x)
     mask = classification == cls
 
-    x_leaves = model.apply(x)
-    proto_leaves = model.apply(prototypes_flat)
+    x_leaves = explainer.model.get_leave_indices(x)
+    proto_leaves = explainer.model.get_leave_indices(prototypes_flat)
     neighbourhood = []
     for i in range(len(proto_leaves)):
         neighbourhood.append((x_leaves == proto_leaves[i]).sum(axis=1))
@@ -70,7 +70,7 @@ def hubness(
         prototypes: dict[int | str, pd.DataFrame],
         cls: str | int,
         idx: int,
-        model: PrototypicRandomForestClassifier,
+        explainer: IExplainer,
         x: pd.DataFrame,
         y: pd.DataFrame
 ) -> float:
@@ -78,8 +78,8 @@ def hubness(
 
     re_idx = prototypes[cls].index.to_list().index(idx)
 
-    x_cls_leaves = model.apply(sub_x)
-    proto_leaves = model.apply(prototypes[cls])
+    x_cls_leaves = explainer.model.get_leave_indices(sub_x)
+    proto_leaves = explainer.model.get_leave_indices(prototypes[cls])
 
     neighbourhood = []
     for i in range(len(proto_leaves)):
@@ -92,10 +92,10 @@ def _mean_similarity(
         prototypes: dict[int | str, pd.DataFrame],
         cls: str | int,
         idx: int,
-        model: PrototypicRandomForestClassifier
+        explainer: IExplainer
 ) -> float:
-    x_cls_leaves = model.apply(sub_x)
-    proto_leaves = model.apply(pd.DataFrame(prototypes[cls].loc[idx]).transpose())
+    x_cls_leaves = explainer.model.get_leave_indices(sub_x)
+    proto_leaves = explainer.model.get_leave_indices(pd.DataFrame(prototypes[cls].loc[idx]).transpose())
     return (x_cls_leaves == proto_leaves).sum() / np.prod(x_cls_leaves.shape)
 
 
@@ -103,21 +103,21 @@ def individual_in_distribution(
         prototypes: dict[int | str, pd.DataFrame],
         cls: str | int,
         idx: int,
-        model: PrototypicRandomForestClassifier,
+        explainer: IExplainer,
         x: pd.DataFrame,
         y: pd.DataFrame
 ) -> float:
     sub_x = x[y["target"] == cls]
-    return _mean_similarity(sub_x, prototypes, cls, idx, model)
+    return _mean_similarity(sub_x, prototypes, cls, idx, explainer)
 
 
 def individual_out_distribution(
         prototypes: dict[int | str, pd.DataFrame],
         cls: str | int,
         idx: int,
-        model: PrototypicRandomForestClassifier,
+        explainer: IExplainer,
         x: pd.DataFrame,
         y: pd.DataFrame
 ) -> float:
     sub_x = x[y["target"] != cls]
-    return _mean_similarity(sub_x, prototypes, cls, idx, model)
+    return _mean_similarity(sub_x, prototypes, cls, idx, explainer)

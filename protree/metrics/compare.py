@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from protree.models.utils import _type_to_np_dtype
+from protree.explainers.utils import _type_to_np_dtype
 
 
 def get_euclidean_predictions(prototypes: dict[str | int, pd.DataFrame], x: pd.DataFrame) -> np.ndarray:

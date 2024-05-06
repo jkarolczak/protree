@@ -1,3 +1,4 @@
+click
 pandas
 python-mnist
 scikit-learn
