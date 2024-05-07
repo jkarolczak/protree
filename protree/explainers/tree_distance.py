@@ -1,21 +1,16 @@
 import warnings
 from abc import ABC
-from typing import Iterable, TypeAlias
+from typing import Iterable
 
 import numpy as np
 import pandas as pd
 from river.forest import ARFClassifier
 from sklearn.ensemble import RandomForestClassifier as _SKLearnRandomForestClassifier
 
-from protree.explainers.utils import iloc
+from protree import TModel, TDataPoint, TDataBatch, TTarget, TPrototypes
 from protree.explainers.utils import parse_input, _type_to_np_dtype, predict_leaf_one
 from protree.metrics.classification import balanced_accuracy
-
-TModel: TypeAlias = ARFClassifier | _SKLearnRandomForestClassifier
-TDataPoint: TypeAlias = pd.Series | np.ndarray | dict[str, int | float]
-TDataBatch: TypeAlias = pd.DataFrame | np.ndarray | list[dict[str, int | float]]
-TTarget: TypeAlias = pd.DataFrame | list[int | str]
-TPrototypes: TypeAlias = dict[str | int, pd.DataFrame | dict[str, int | float]]
+from protree.utils import iloc, get_x_belonging_to_cls
 
 
 class IModelAdapter(ABC):
@@ -103,7 +98,7 @@ class IExplainer(ABC):
                                   ) -> dict[int | str, np.ndarray]:
         distances = {cls: None for cls in classes}
         for cls in classes:
-            class_x = IExplainer.get_x_belonging_to_cls(x, y, cls)
+            class_x = get_x_belonging_to_cls(x, y, cls)
             distances[cls] = self.distance_matrix(class_x)
         return distances
 
@@ -113,7 +108,8 @@ class IExplainer(ABC):
         x_nodes = self.model.get_leave_indices(x)
 
         for cls in prototypes:
-            for _, prototype in (prototypes[cls].iterrows() if hasattr(prototypes[cls], "iterrows") else prototypes[cls]):
+            for _, prototype in (
+                    prototypes[cls].iterrows() if hasattr(prototypes[cls], "iterrows") else enumerate(prototypes[cls])):
                 prototype_leaves = self.model.get_leave_indices([prototype])
                 prototype_similarity = (prototype_leaves == x_nodes).sum(axis=1) / self.model.n_trees
                 mask = prototype_similarity > similarity
@@ -145,14 +141,6 @@ class IExplainer(ABC):
             for col in y:
                 classes.update(set(y[col].unique()))
             return classes
-
-    @staticmethod
-    def get_x_belonging_to_cls(x: TDataBatch, y: TTarget, cls: int | str) -> TDataBatch:
-        if isinstance(x, pd.DataFrame) and isinstance(y, pd.DataFrame):
-            return x[(y == cls).any(axis=1)]
-        if isinstance(x, list) and isinstance(y, list):
-            return [x_ for x_, y_ in zip(x, y) if y_ == cls]
-        raise ValueError("x and y have to both be of the same type, one of pd.DataFrame or list")
 
 
 class G_KM(IExplainer):
@@ -231,7 +219,7 @@ class SM_A(IExplainer):
             prototypes[cls].append(idx)
 
         for cls in classes:
-            prototypes[cls] = iloc(IExplainer.get_x_belonging_to_cls(x, y, cls), prototypes[cls])
+            prototypes[cls] = iloc(get_x_belonging_to_cls(x, y, cls), prototypes[cls])
 
         return prototypes
 
@@ -265,7 +253,7 @@ class SG(SM_A):
                     temp_prototypes = prototypes.copy()
                     temp_prototypes[cls].append(idx)
                     for _cls in temp_prototypes:
-                        temp_prototypes[_cls] = iloc(IExplainer.get_x_belonging_to_cls(x, y, cls), temp_prototypes[_cls])
+                        temp_prototypes[_cls] = iloc(get_x_belonging_to_cls(x, y, cls), temp_prototypes[_cls])
                     temp_accuracy = self.score_with_prototypes(x, y, temp_prototypes)
                     if temp_accuracy > accuracy:
                         prototype = (cls, idx)
@@ -281,7 +269,7 @@ class SG(SM_A):
             prototypes[cls].append(idx)
 
         for cls in classes:
-            prototypes[cls] = iloc(IExplainer.get_x_belonging_to_cls(x, y, cls), prototypes[cls])
+            prototypes[cls] = iloc(get_x_belonging_to_cls(x, y, cls), prototypes[cls])
 
         return prototypes
 
@@ -316,7 +304,7 @@ class APete(SM_A):
 
             protos = {}
             for cls in classes:
-                protos[cls] = iloc(IExplainer.get_x_belonging_to_cls(x, y, cls), prototypes[cls])
+                protos[cls] = iloc(get_x_belonging_to_cls(x, y, cls), prototypes[cls])
 
             if np.abs(prev_improvement - improvement) / improvement <= self.beta:
                 return protos

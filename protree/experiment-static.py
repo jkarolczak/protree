@@ -5,6 +5,7 @@ from sklearn.ensemble import RandomForestClassifier
 from protree.data import Dataset, DEFAULT_DATA_DIR, TDataset
 from protree.explainers import Explainer, TExplainer
 from protree.meta import N_JOBS, RANDOM_SEED
+from protree.metrics.compare import mutual_information, mean_minimal_distance
 from protree.metrics.group import (fidelity_with_model, contribution, entropy_hubness, mean_in_distribution,
                                    mean_out_distribution)
 from protree.utils import parse_int_float_str, pprint_dict
@@ -23,7 +24,7 @@ from protree.utils import parse_int_float_str, pprint_dict
 @click.option("--log", is_flag=True, help="Number of trees. Allowable values are positive ints.")
 def main(dataset: TDataset, explainer, directory: str, n_features: str | int, n_trees: int, log: bool, kw_args: str):
     max_features = parse_int_float_str(n_features)
-    kw_args_dict = dict([arg.split("=") for arg in kw_args.split(",")])
+    kw_args_dict = dict([arg.split("=") for arg in (kw_args.split(",") if kw_args else [])])
     ds = Dataset(
         name=dataset,
         directory=directory,
@@ -50,6 +51,9 @@ def main(dataset: TDataset, explainer, directory: str, n_features: str | int, n_
 
     model.fit(ds.train[0], ds.train[1]["target"].ravel())
     prototypes = explainer.select_prototypes(*ds.train)
+
+    print(mutual_information(prototypes, prototypes, ds.train[0]))
+    print(mean_minimal_distance(prototypes, prototypes))
 
     statistics = {
         "n prototypes": sum([len(c) for c in prototypes.values()]),

@@ -48,10 +48,3 @@ def predict_leaf_one(model: ARFClassifier | HoeffdingTreeClassifier, x: dict[str
         else:
             leaf = model._root
     return id(leaf)
-
-
-def iloc(x: pd.DataFrame | list[Any], indices: list[int]) -> pd.DataFrame | list[Any]:
-    if isinstance(x, pd.DataFrame):
-        return x.iloc[indices, :]
-    if isinstance(x, list):
-        return [x_ for i, x_ in enumerate(x) if i in indices]
