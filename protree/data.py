@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import os
-from argparse import ArgumentParser, BooleanOptionalAction
 from pathlib import Path
 from typing import get_args, Literal, TypeAlias
 
+import click
 import numpy as np
 import pandas as pd
+from river.datasets import synth
 from scipy.stats import entropy
 from sklearn.preprocessing import OrdinalEncoder, MinMaxScaler
 
@@ -15,8 +16,9 @@ from protree.transformations import MultilabelHotEncoder
 
 DEFAULT_DATA_DIR = os.environ.get("DEFAULT_DATA_DIR", "./data")
 
-TDataset: TypeAlias = Literal["breast_cancer", "caltech", "compass", "diabetes", "mnist", "rhc"]
-categorical_columns: dict[TDataset, list[str]] = {
+TStationaryDataset: TypeAlias = Literal["breast_cancer", "caltech", "compass", "diabetes", "mnist", "rhc"]
+TDynamicDataset: TypeAlias = Literal["friedman", "mixed", "sea", "sine", "tree", "agrawal"]
+categorical_columns: dict[TStationaryDataset, list[str]] = {
     "breast_cancer": [],
     "caltech": [],
     "compass": ["age_cat", "priors_count", "c_charge_degree"],
@@ -25,6 +27,97 @@ categorical_columns: dict[TDataset, list[str]] = {
     "rhc": ["ca", "death", "sex", "dth30", "swang1", "dnr1", "ninsclas", "resp", "card", "neuro", "gastr", "renal", "meta",
             "hema", "seps", "trauma", "ortho", "race", "income"],
 }
+
+
+class DynamicDatasetFactory:
+    @staticmethod
+    def create(name: TDynamicDataset, drift_position: int = 500, drift_width: int = 5, seed: int = RANDOM_SEED
+               ) -> synth.ConceptDriftStream:
+        return globals()[f"{name.capitalize()}Drift"](drift_position=drift_position, drift_width=drift_width, seed=seed)
+
+
+class MixedDrift(synth.ConceptDriftStream):
+    """Mixed synthetic dataset, based on the River library implementation:
+    https://riverml.xyz/latest/api/datasets/synth/Mixed/
+
+    The simulated drift is a transition between two classification functions available in the dataset.
+
+    :param drift_position: The position of the drift.
+    :param drift_width: The width of the drift.
+    :param seed: Random seed.
+    """
+
+    def __init__(self, drift_position: int | tuple[int, ...] = 500, drift_width: int = 1, seed: int = RANDOM_SEED) -> None:
+        super().__init__(stream=synth.Mixed(classification_function=0, balance_classes=False, seed=42),
+                         drift_stream=synth.Mixed(classification_function=1, balance_classes=True, seed=42),
+                         position=drift_position, width=drift_width, seed=seed)
+
+
+class SeaDrift(synth.ConceptDriftStream):
+    """SEA synthetic dataset, based on the River library implementation:
+    https://riverml.xyz/latest/api/datasets/synth/SEA/
+
+    The simulated drift is a transition between two variants of the original dataset.
+
+    :param drift_position: The position of the drift.
+    :param drift_width: The width of the drift.
+    :param seed: Random seed.
+    """
+
+    def __init__(self, drift_position: int | tuple[int, ...] = 500, drift_width: int = 1, seed: int = RANDOM_SEED) -> None:
+        super().__init__(stream=synth.SEA(variant=1, seed=42), drift_stream=synth.SEA(variant=2, seed=42),
+                         position=drift_position, width=drift_width, seed=seed)
+
+
+class SineDrift(synth.ConceptDriftStream):
+    """Sine synthetic dataset, based on the River library implementation:
+    https://riverml.xyz/latest/api/datasets/synth/Sine/
+
+    The simulated drift is a transition between two classification functions available in the dataset.
+
+    :param drift_position: The position of the drift.
+    :param drift_width: The width of the drift.
+    :param seed: Random seed.
+
+    """
+
+    def __init__(self, drift_position: int | tuple[int, ...] = 500, drift_width: int = 1, seed: int = RANDOM_SEED) -> None:
+        super().__init__(stream=synth.Sine(classification_function=1, seed=42, balance_classes=True),
+                         drift_stream=synth.Sine(classification_function=2, seed=42, balance_classes=True),
+                         position=drift_position, width=drift_width, seed=seed)
+
+
+class TreeDrift(synth.ConceptDriftStream):
+    """RandomTree synthetic dataset, based on the River library implementation:
+    https://riverml.xyz/latest/api/datasets/synth/RandomTree/
+
+    The simulated drift is a transition between two trees.
+
+    :param drift_position: The position of the drift.
+    :param drift_width: The width of the drift.
+    :param seed: Random seed.
+    """
+
+    def __init__(self, drift_position: int | tuple[int, ...] = 500, drift_width: int = 1, seed: int = RANDOM_SEED) -> None:
+        super().__init__(stream=synth.RandomTree(seed_tree=42), drift_stream=synth.RandomTree(seed_tree=23),
+                         position=drift_position, width=drift_width, seed=seed)
+
+
+class AgrawalDrift(synth.ConceptDriftStream):
+    """Agrawal synthetic dataset, based on the River library implementation:
+    https://riverml.xyz/latest/api/datasets/synth/Agrawal/
+
+    The simulated drift is a transition between two classification functions available in the dataset.
+
+    :param drift_position: The position of the drift.
+    :param drift_width: The width of the drift.
+    :param seed: Random seed.
+    """
+
+    def __init__(self, drift_position: int | tuple[int, ...] = 500, drift_width: int = 1, seed: int = RANDOM_SEED) -> None:
+        super().__init__(stream=synth.Agrawal(classification_function=1, seed=42),
+                         drift_stream=synth.Agrawal(classification_function=6, seed=42),
+                         position=drift_position, width=drift_width, seed=seed)
 
 
 class BinaryScaler:
@@ -56,10 +149,10 @@ class BinaryScaler:
         return self.transform(x)
 
 
-class Dataset:
+class StationaryDataset:
     def __init__(
             self,
-            name: TDataset,
+            name: TStationaryDataset,
             directory: str = DEFAULT_DATA_DIR,
             encode_categorical_variables: bool = True,
             normalise: bool = False,
@@ -135,7 +228,7 @@ class Dataset:
         return x, y
 
     def _get_x_y(self, dataset: Literal["train", "valid", "test"]) -> tuple[pd.DataFrame, pd.DataFrame]:
-        x, y = Dataset.x_y_split(self._read_file(dataset))
+        x, y = StationaryDataset.x_y_split(self._read_file(dataset))
         x = self._x_transform(x, y)
         y = self._y_transform(y)
         return x, y
@@ -399,13 +492,13 @@ def _download_caltech(
 
 def download_all(
         directory: str = DEFAULT_DATA_DIR,
-        dataset_names: list[Literal["all"] | TDataset] = "all",
+        dataset_names: list[Literal["all"] | TStationaryDataset] = "all",
         verbose: bool = True
 ) -> None:
     path = Path(directory)
     path.mkdir(parents=True, exist_ok=True)
 
-    allowable_datasets = get_args(TDataset)
+    allowable_datasets = get_args(TStationaryDataset)
 
     if "all" in dataset_names:
         dataset_names = allowable_datasets
@@ -418,20 +511,20 @@ def download_all(
         globals()[f"_download_{dataset_name}"](directory=directory)
 
 
-parser = ArgumentParser("Download datasets for running experiments.")
-parser.add_argument("--directory", "-d", default=DEFAULT_DATA_DIR, help="Directory to store datasets")
-parser.add_argument("--silent", "-s", action=BooleanOptionalAction,
-                    help="Supress displaying progress.")
-parser.add_argument("--dataset-names", "-n", default="all", help="Comma-separated list of dataset names to"
-                                                                 " download. Allowable values are 'breast_cancer', "
-                                                                 "'caltech', 'compass', 'diabetes', 'mnist' and 'rhc'. "
-                                                                 "Use 'all' to download all datasets")
+@click.command()
+@click.option("--directory", "-d", default=DEFAULT_DATA_DIR, help="Directory to store datasets")
+@click.option("--silent", "-s", is_flag=True, help="Suppress displaying progress.")
+@click.option("--dataset-names", "-n", default="all", help="Comma-separated list of dataset names to download. "
+                                                           "Allowable values are 'breast_cancer', 'caltech', 'compass', "
+                                                           "'diabetes', 'mnist' and 'rhc'. Use 'all' to download all "
+                                                           "datasets.")
+def main(directory, silent, dataset_names):
+    download_all(
+        directory=directory,
+        dataset_names=[s.strip() for s in dataset_names.split(",")],
+        verbose=not silent
+    )
+
 
 if __name__ == "__main__":
-    args = parser.parse_args()
-
-    download_all(
-        directory=args.directory,
-        dataset_names=[s.strip() for s in args.dataset_names.split(",")],
-        verbose=not args.silent
-    )
+    main()

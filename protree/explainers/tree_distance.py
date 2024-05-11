@@ -134,13 +134,15 @@ class IExplainer(ABC):
         return IExplainer._score(y, y_hat)
 
     def get_classes(self, y: TTarget) -> set[int | str]:
-        if isinstance(y, list):
+        if isinstance(y, (list, tuple)):
             return set(y)
         if isinstance(y, pd.DataFrame):
             classes = set()
             for col in y:
                 classes.update(set(y[col].unique()))
             return classes
+        if isinstance(y, np.ndarray):
+            return set(y.tolist())
 
 
 class G_KM(IExplainer):
@@ -168,13 +170,15 @@ class G_KM(IExplainer):
             )
         return prototypes
 
-    def select_prototypes(self, x: TDataBatch, y: TTarget) -> TPrototypes:
+    def select_prototypes(self, x: TDataBatch) -> TPrototypes:
+        y = self.model.get_model_predictions(x)
+
         classes = self.get_classes(y)
         prototypes = {cls: [] for cls in classes}
         distances = self._create_distance_matrices(x, y, classes)
 
         for cls in classes:
-            class_x = IExplainer
+            class_x = get_x_belonging_to_cls(x, y, cls)
             indices = self._find_single_class_prototypes(distances[cls])
             prototypes[cls] = iloc(class_x, indices)
         return prototypes
@@ -209,7 +213,9 @@ class SM_A(IExplainer):
                 prototype = (improvement, cls, idx)
         return prototype[1], prototype[2]
 
-    def select_prototypes(self, x: TDataBatch, y: TTarget) -> TPrototypes:
+    def select_prototypes(self, x: TDataBatch) -> TPrototypes:
+        y = self.model.get_model_predictions(x)
+
         classes = self.get_classes(y)
         prototypes = {cls: [] for cls in classes}
 
@@ -259,7 +265,9 @@ class SG(SM_A):
                         prototype = (cls, idx)
         return prototype[1], prototype[2], accuracy
 
-    def select_prototypes(self, x: TPrototypes, y: TTarget) -> TPrototypes:
+    def select_prototypes(self, x: TPrototypes) -> TPrototypes:
+        y = self.model.get_model_predictions(x)
+
         classes = self.get_classes(y)
         prototypes = {cls: [] for cls in classes}
         accuracy = 0
@@ -292,7 +300,9 @@ class APete(SM_A):
                 prototype_cls = cls
         return prototype_cls, prototype_idx, delta_prim
 
-    def select_prototypes(self, x: TDataBatch, y: TTarget) -> TPrototypes:
+    def select_prototypes(self, x: TDataBatch) -> TPrototypes:
+        y = self.model.get_model_predictions(x)
+
         prev_improvement = 0.0
         classes = self.get_classes(y)
         prototypes = {cls: [] for cls in classes}

@@ -42,10 +42,10 @@ def voting_frequency(
     neighbourhood = []
     for i in range(len(proto_leaves)):
         neighbourhood.append((x_leaves == proto_leaves[i]).sum(axis=1))
-    return (np.vstack(neighbourhood).argmax(axis=0) == re_idx).sum() / len(x)
+    return (np.vstack(neighbourhood).argmax(axis=0) == re_idx).sum().item() / len(x)
 
 
-def correct_votes(
+def consistent_votes(
         prototypes: TPrototypes,
         cls: str | int,
         idx: int,
@@ -65,7 +65,7 @@ def correct_votes(
         neighbourhood.append((x_leaves == proto_leaves[i]).sum(axis=1))
     votes = (np.vstack(neighbourhood).argmax(axis=0) == re_idx)
     correct = np.logical_and(votes, mask).sum()
-    return correct / votes.sum()
+    return (correct / votes.sum()).item()
 
 
 def hubness(
@@ -101,7 +101,7 @@ def _mean_similarity(
         proto_leaves = explainer.model.get_leave_indices(pd.DataFrame(prototypes[cls].loc[idx]).transpose())
     else:
         proto_leaves = explainer.model.get_leave_indices([prototypes[cls][idx]])
-    return (x_cls_leaves == proto_leaves).sum() / np.prod(x_cls_leaves.shape)
+    return ((x_cls_leaves == proto_leaves).sum() / np.prod(x_cls_leaves.shape)).item()
 
 
 def individual_in_distribution(
