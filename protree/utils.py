@@ -33,7 +33,7 @@ def parse_int_float_str(value) -> int | float | str:
 def get_x_belonging_to_cls(x: TDataBatch, y: TTarget, cls: int | str) -> TDataBatch:
     if isinstance(x, pd.DataFrame) and isinstance(y, (np.ndarray, pd.DataFrame)):
         if isinstance(y, np.ndarray):
-            return x[(y == cls)]
+            return x[y == cls]
         return x[(y == cls).any(axis=1)]
     if isinstance(x, (list, tuple)) and isinstance(y, (np.ndarray, list, tuple)):
         return [x_ for x_, y_ in zip(x, y) if y_ == cls]
@@ -89,5 +89,5 @@ def get_re_idx(prototypes: TPrototypes, cls: str | int, idx: int, in_class_only:
 
 
 def flatten_prototypes(prototypes: TPrototypes) -> pd.DataFrame | list[dict[str, int | float]]:
-    if isinstance(prototypes[0], pd.DataFrame):
+    if isinstance(prototypes[list(prototypes.keys())[0]], pd.DataFrame):
         return pd.concat([prototypes[cls] for cls in prototypes], ignore_index=False)

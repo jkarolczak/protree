@@ -51,7 +51,7 @@ def main(dataset: TStationaryDataset, explainer, directory: str, n_features: str
     prototypes = explainer.select_prototypes(ds.train[0])
 
     statistics = {
-        "n_prototypes": sum([len(c) for c in prototypes.values()]),
+        "total_n_prototypes": sum([len(c) for c in prototypes.values()]),
         "score/accuracy/train/random_forest": explainer.score(ds.train[0], ds.train[1]),
         "score/accuracy/train/prototypes": explainer.score_with_prototypes(ds.train[0], ds.train[1], prototypes),
         "score/accuracy/valid/random_forest": explainer.score(ds.valid[0], ds.valid[1]),

@@ -43,12 +43,16 @@ class KMeans(IExplainer):
                 x_partial).values
 
             c_kwargs = self._kwargs.copy()
-            c_kwargs["n_clusters"] = min(c_kwargs["n_clusters"], len(x_partial))
+            c_kwargs["n_clusters"] = min(int(c_kwargs["n_clusters"]), len(x_partial_np))
 
             self._kmeans[c] = SKKMeans(**c_kwargs).fit(x_partial_np)
             cluster_centers = self._kmeans[c].cluster_centers_
             distances = np.linalg.norm(x_partial_np[:, np.newaxis, :] - cluster_centers[np.newaxis, :], axis=2)
-            closest_indices = np.argmin(distances, axis=0)
+            closest_indices = []
+            for id_d in range(distances.shape[1]):
+                closest_idx = np.argmin(distances[:, id_d])
+                distances[closest_idx, :] = np.inf
+                closest_indices.append(closest_idx)
             self.prototypes[c] = iloc(x_partial, closest_indices)
 
     def fit(self, x: pd.DataFrame) -> KMeans:

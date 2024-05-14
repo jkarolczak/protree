@@ -42,7 +42,7 @@ def voting_frequency(
     neighbourhood = []
     for i in range(len(proto_leaves)):
         neighbourhood.append((x_leaves == proto_leaves[i]).sum(axis=1))
-    return (np.vstack(neighbourhood).argmax(axis=0) == re_idx).sum().item() / len(x)
+    return (np.vstack(neighbourhood).argmax(axis=0) == re_idx).sum().item() / len(x) if len(x) > 0 else 0.0
 
 
 def consistent_votes(
@@ -65,7 +65,7 @@ def consistent_votes(
         neighbourhood.append((x_leaves == proto_leaves[i]).sum(axis=1))
     votes = (np.vstack(neighbourhood).argmax(axis=0) == re_idx)
     correct = np.logical_and(votes, mask).sum()
-    return (correct / votes.sum()).item()
+    return (correct / votes.sum()).item() if votes.sum() > 0 else 0.0
 
 
 def hubness(
@@ -78,6 +78,9 @@ def hubness(
 ) -> float:
     sub_x = get_x_belonging_to_cls(x, y, cls)
 
+    if not len(sub_x):
+        return 0.0
+
     re_idx = get_re_idx(prototypes, cls, idx, in_class_only=True)
 
     x_cls_leaves = explainer.model.get_leave_indices(sub_x)
@@ -86,7 +89,7 @@ def hubness(
     neighbourhood = []
     for i in range(len(proto_leaves)):
         neighbourhood.append((x_cls_leaves == proto_leaves[i]).sum(axis=1))
-    return (np.vstack(neighbourhood).argmax(axis=0) == re_idx).sum() / len(sub_x)
+    return (np.vstack(neighbourhood).argmax(axis=0) == re_idx).sum().item() / len(sub_x) if len(sub_x) > 0 else 0.0
 
 
 def _mean_similarity(

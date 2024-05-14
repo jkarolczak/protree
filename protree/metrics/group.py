@@ -68,8 +68,10 @@ def vector_entropy_hubness(prototypes: TPrototypes, explainer: IExplainer, x: TD
     for cls in prototypes:
         for idx in (prototypes[cls].index if isinstance(prototypes[cls], pd.DataFrame) else range(len(prototypes[cls]))):
             hub_score[cls].append(hubness(prototypes, cls, idx, explainer, x, y))
-    entropies = {cls: (entropy(hub_score[cls], base=2) / max(log2(len(hub_score[cls]) + 1e-6), 1 + 1e-6)).item() for cls in
-                 hub_score}
+    entropies = {
+        cls: (entropy(hub_score[cls], base=2) / max(log2(len(hub_score[cls]) + 1e-6), 1 + 1e-6)).item()
+        if sum(hub_score[cls]) != 0 else 0.0
+        for cls in hub_score}
     return entropies
 
 

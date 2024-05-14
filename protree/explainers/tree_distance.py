@@ -139,7 +139,7 @@ class IExplainer(ABC):
         if isinstance(y, pd.DataFrame):
             classes = set()
             for col in y:
-                classes.update(set(y[col].unique()))
+                classes.update(set([y_.item() if hasattr(y_, "item") else y_ for y_ in y[col].unique()]))
             return classes
         if isinstance(y, np.ndarray):
             return set(y.tolist())
@@ -148,7 +148,7 @@ class IExplainer(ABC):
 class G_KM(IExplainer):
     def __init__(self, model: TModel, n_prototypes: int = 3, *args, **kwargs) -> None:
         super().__init__(model, *args, **kwargs)
-        self.n_prototypes = n_prototypes
+        self.n_prototypes = int(n_prototypes)
 
     def _find_classwise_prototype(self, matrix: np.ndarray, prototypes: list[int]) -> int:
         if not prototypes:
@@ -200,6 +200,8 @@ class SM_A(IExplainer):
         original_distance = current_partial_distances.sum()
         candidates = matrix[~mask]
         candidate_distances = np.minimum(candidates, current_partial_distances).sum(axis=1)
+        if not len(candidate_distances):
+            return -1, 0.0
         idx = np.argmin(candidate_distances)
         improvement = original_distance - candidate_distances[idx]
         original_idx = np.where(~mask)[0][np.argmin(candidate_distances)]

@@ -17,7 +17,7 @@ from protree.transformations import MultilabelHotEncoder
 DEFAULT_DATA_DIR = os.environ.get("DEFAULT_DATA_DIR", "./data")
 
 TStationaryDataset: TypeAlias = Literal["breast_cancer", "caltech", "compass", "diabetes", "mnist", "rhc"]
-TDynamicDataset: TypeAlias = Literal["friedman", "mixed", "sea", "sine", "tree", "agrawal"]
+TDynamicDataset: TypeAlias = Literal["mixed", "sea", "sine", "tree", "agrawal"]
 categorical_columns: dict[TStationaryDataset, list[str]] = {
     "breast_cancer": [],
     "caltech": [],
