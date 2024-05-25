@@ -96,12 +96,12 @@ def classwise_mean_minimal_distance(a: TPrototypes, b: TPrototypes, penalty: flo
     distances = {}
     for cls in classes:
         # both empty
-        if len(a[cls]) == 0 and len(b[cls]) == 0:
+        if (cls not in a or len(a[cls]) == 0) and (cls not in b or len(b[cls]) == 0):
             distances[cls] = 0.0
 
         # one empty
-        elif len(a[cls]) == 0 or len(b[cls]) == 0:
-            distances[cls] = penalty * len(b[cls] if b[cls] else a[cls])
+        elif (cls not in b or len(a[cls]) == 0) or (cls not in b or len(b[cls]) == 0):
+            distances[cls] = penalty * len(b[cls] if cls in b and b[cls] else a[cls])
 
         # both not empty
         else:

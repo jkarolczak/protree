@@ -170,8 +170,8 @@ class G_KM(IExplainer):
             )
         return prototypes
 
-    def select_prototypes(self, x: TDataBatch) -> TPrototypes:
-        y = self.model.get_model_predictions(x)
+    def select_prototypes(self, x: TDataBatch, y: TTarget | None = None) -> TPrototypes:
+        y = y or self.model.get_model_predictions(x)
 
         classes = self.get_classes(y)
         prototypes = {cls: [] for cls in classes}
@@ -215,8 +215,8 @@ class SM_A(IExplainer):
                 prototype = (improvement, cls, idx)
         return prototype[1], prototype[2]
 
-    def select_prototypes(self, x: TDataBatch) -> TPrototypes:
-        y = self.model.get_model_predictions(x)
+    def select_prototypes(self, x: TDataBatch, y: TTarget | None = None) -> TPrototypes:
+        y = y or self.model.get_model_predictions(x)
 
         classes = self.get_classes(y)
         prototypes = {cls: [] for cls in classes}
@@ -267,8 +267,8 @@ class SG(SM_A):
                         prototype = (cls, idx)
         return prototype[1], prototype[2], accuracy
 
-    def select_prototypes(self, x: TPrototypes) -> TPrototypes:
-        y = self.model.get_model_predictions(x)
+    def select_prototypes(self, x: TDataBatch, y: TTarget | None = None) -> TPrototypes:
+        y = y or self.model.get_model_predictions(x)
 
         classes = self.get_classes(y)
         prototypes = {cls: [] for cls in classes}
@@ -302,8 +302,8 @@ class APete(SM_A):
                 prototype_cls = cls
         return prototype_cls, prototype_idx, delta_prim
 
-    def select_prototypes(self, x: TDataBatch) -> TPrototypes:
-        y = self.model.get_model_predictions(x)
+    def select_prototypes(self, x: TDataBatch, y: TTarget | None = None) -> TPrototypes:
+        y = y or self.model.get_model_predictions(x)
 
         prev_improvement = 0.0
         classes = self.get_classes(y)

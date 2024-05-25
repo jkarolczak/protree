@@ -2,7 +2,7 @@ import click
 import wandb
 from sklearn.ensemble import RandomForestClassifier
 
-from protree.data import StationaryDataset, DEFAULT_DATA_DIR, TStationaryDataset
+from protree.data.static import StationaryDataset, DEFAULT_DATA_DIR, TStationaryDataset
 from protree.explainers import Explainer, TExplainer
 from protree.meta import N_JOBS, RANDOM_SEED
 from protree.metrics.group import vector_voting_frequency, fidelity_with_model, mean_entropy_hubness, mean_in_distribution, \

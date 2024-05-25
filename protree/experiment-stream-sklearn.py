@@ -7,7 +7,8 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import MinMaxScaler
 
 from protree import TPrototypes, TDataBatch
-from protree.data import TDynamicDataset, DynamicDatasetFactory
+from protree.data.river import TDynamicDataset, DynamicDatasetFactory
+from protree.data.stream_generators import TStreamGenerator, StreamGeneratorFactory
 from protree.explainers import TExplainer, Explainer
 from protree.meta import RANDOM_SEED
 from protree.metrics.compare import mutual_information, mean_minimal_distance, mean_centroid_displacement, \
@@ -31,20 +32,22 @@ def create_comparison_dict(a: TPrototypes, b: TPrototypes, x: TDataBatch) -> dic
 
 
 @click.command()
-@click.argument("dataset", type=click.Choice(TDynamicDataset.__args__))
+@click.argument("dataset", type=click.Choice(TDynamicDataset.__args__ + TStreamGenerator.__args__))
 @click.argument("explainer", type=click.Choice(["KMeans", "G_KM", "SM_A", "SM_WA", "SG", "APete"]))
 @click.option("--n_trees", "-t", default=300, help="Number of trees. Allowable values are positive ints.")
 @click.option("--kw_args", "-kw", type=str, default="",
               help="Additional, keyword arguments for the explainer. Must be in the form of key=value,key2=value2...")
-@click.option("--chunk_size", "-cs", type=int, default=750, help="The size of the memory.")
-@click.option("--drift_width", "-dw", type=int, default=10, help="The width of the drift.")
+@click.option("--chunk_size", "-cs", type=int, default=2000, help="The size of the memory.")
+@click.option("--drift_width", "-dw", type=int, default=1, help="The width of the drift.")
 @click.option("--log", is_flag=True, help="A flag indicating whether to log the results to wandb.")
-def main(dataset: TDynamicDataset, explainer, n_trees: int, kw_args: str, chunk_size: int, drift_width: int,
+def main(dataset: TDynamicDataset | TStreamGenerator, explainer, n_trees: int, kw_args: str, chunk_size: int, drift_width: int,
          log: bool) -> None:
     kw_args_dict = dict([arg.split("=") for arg in (kw_args.split(",") if kw_args else [])])
-    ds = DynamicDatasetFactory.create(name=dataset, drift_position=2 * chunk_size, drift_width=drift_width).take(
-        3 * chunk_size)
-    ds = list(ds)
+    if dataset in TStreamGenerator.__args__:
+        ds = StreamGeneratorFactory.create(name=dataset, drift_position=2 * chunk_size, drift_width=drift_width)
+    elif dataset in TDynamicDataset.__args__:
+        ds = DynamicDatasetFactory.create(name=dataset, drift_position=2 * chunk_size, drift_width=drift_width)
+    ds = list(ds.take(3 * chunk_size))
     x = pd.DataFrame.from_records([x for x, _ in ds])
     y = pd.DataFrame({"target": [y for _, y in ds]})
 

@@ -47,4 +47,4 @@ def predict_leaf_one(model: ARFClassifier | HoeffdingTreeClassifier, x: dict[str
             leaf = model._root.traverse(x, until_leaf=True)
         else:
             leaf = model._root
-    return id(leaf)
+        return id(leaf)

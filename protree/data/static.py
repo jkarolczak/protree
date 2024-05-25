@@ -2,22 +2,18 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import get_args, Literal, TypeAlias
+from typing import Literal, get_args, TypeAlias
 
-import click
-import numpy as np
 import pandas as pd
-from river.datasets import synth
-from scipy.stats import entropy
 from sklearn.preprocessing import OrdinalEncoder, MinMaxScaler
 
+from protree.data.utils import BinaryScaler
 from protree.meta import RANDOM_SEED
 from protree.transformations import MultilabelHotEncoder
 
 DEFAULT_DATA_DIR = os.environ.get("DEFAULT_DATA_DIR", "./data")
 
 TStationaryDataset: TypeAlias = Literal["breast_cancer", "caltech", "compass", "diabetes", "mnist", "rhc"]
-TDynamicDataset: TypeAlias = Literal["mixed", "sea", "sine", "tree", "agrawal"]
 categorical_columns: dict[TStationaryDataset, list[str]] = {
     "breast_cancer": [],
     "caltech": [],
@@ -27,126 +23,6 @@ categorical_columns: dict[TStationaryDataset, list[str]] = {
     "rhc": ["ca", "death", "sex", "dth30", "swang1", "dnr1", "ninsclas", "resp", "card", "neuro", "gastr", "renal", "meta",
             "hema", "seps", "trauma", "ortho", "race", "income"],
 }
-
-
-class DynamicDatasetFactory:
-    @staticmethod
-    def create(name: TDynamicDataset, drift_position: int = 500, drift_width: int = 5, seed: int = RANDOM_SEED
-               ) -> synth.ConceptDriftStream:
-        return globals()[f"{name.capitalize()}Drift"](drift_position=drift_position, drift_width=drift_width, seed=seed)
-
-
-class MixedDrift(synth.ConceptDriftStream):
-    """Mixed synthetic dataset, based on the River library implementation:
-    https://riverml.xyz/latest/api/datasets/synth/Mixed/
-
-    The simulated drift is a transition between two classification functions available in the dataset.
-
-    :param drift_position: The position of the drift.
-    :param drift_width: The width of the drift.
-    :param seed: Random seed.
-    """
-
-    def __init__(self, drift_position: int | tuple[int, ...] = 500, drift_width: int = 1, seed: int = RANDOM_SEED) -> None:
-        super().__init__(stream=synth.Mixed(classification_function=0, balance_classes=False, seed=42),
-                         drift_stream=synth.Mixed(classification_function=1, balance_classes=True, seed=42),
-                         position=drift_position, width=drift_width, seed=seed)
-
-
-class SeaDrift(synth.ConceptDriftStream):
-    """SEA synthetic dataset, based on the River library implementation:
-    https://riverml.xyz/latest/api/datasets/synth/SEA/
-
-    The simulated drift is a transition between two variants of the original dataset.
-
-    :param drift_position: The position of the drift.
-    :param drift_width: The width of the drift.
-    :param seed: Random seed.
-    """
-
-    def __init__(self, drift_position: int | tuple[int, ...] = 500, drift_width: int = 1, seed: int = RANDOM_SEED) -> None:
-        super().__init__(stream=synth.SEA(variant=1, seed=42), drift_stream=synth.SEA(variant=2, seed=42),
-                         position=drift_position, width=drift_width, seed=seed)
-
-
-class SineDrift(synth.ConceptDriftStream):
-    """Sine synthetic dataset, based on the River library implementation:
-    https://riverml.xyz/latest/api/datasets/synth/Sine/
-
-    The simulated drift is a transition between two classification functions available in the dataset.
-
-    :param drift_position: The position of the drift.
-    :param drift_width: The width of the drift.
-    :param seed: Random seed.
-
-    """
-
-    def __init__(self, drift_position: int | tuple[int, ...] = 500, drift_width: int = 1, seed: int = RANDOM_SEED) -> None:
-        super().__init__(stream=synth.Sine(classification_function=1, seed=42, balance_classes=True),
-                         drift_stream=synth.Sine(classification_function=2, seed=42, balance_classes=True),
-                         position=drift_position, width=drift_width, seed=seed)
-
-
-class TreeDrift(synth.ConceptDriftStream):
-    """RandomTree synthetic dataset, based on the River library implementation:
-    https://riverml.xyz/latest/api/datasets/synth/RandomTree/
-
-    The simulated drift is a transition between two trees.
-
-    :param drift_position: The position of the drift.
-    :param drift_width: The width of the drift.
-    :param seed: Random seed.
-    """
-
-    def __init__(self, drift_position: int | tuple[int, ...] = 500, drift_width: int = 1, seed: int = RANDOM_SEED) -> None:
-        super().__init__(stream=synth.RandomTree(seed_tree=42), drift_stream=synth.RandomTree(seed_tree=23),
-                         position=drift_position, width=drift_width, seed=seed)
-
-
-class AgrawalDrift(synth.ConceptDriftStream):
-    """Agrawal synthetic dataset, based on the River library implementation:
-    https://riverml.xyz/latest/api/datasets/synth/Agrawal/
-
-    The simulated drift is a transition between two classification functions available in the dataset.
-
-    :param drift_position: The position of the drift.
-    :param drift_width: The width of the drift.
-    :param seed: Random seed.
-    """
-
-    def __init__(self, drift_position: int | tuple[int, ...] = 500, drift_width: int = 1, seed: int = RANDOM_SEED) -> None:
-        super().__init__(stream=synth.Agrawal(classification_function=1, seed=42),
-                         drift_stream=synth.Agrawal(classification_function=6, seed=42),
-                         position=drift_position, width=drift_width, seed=seed)
-
-
-class BinaryScaler:
-    def __init__(
-            self
-    ) -> None:
-        self.mapper: dict[str, float] = {}
-
-    def fit(self, x: pd.DataFrame, y: pd.DataFrame) -> BinaryScaler:
-        binary_columns = x.columns[x.nunique() == 2]
-        for c in binary_columns:
-            conditional_entropies = []
-            for cls in y["target"].unique():
-                mask = y["target"] == cls
-                p_x_given_y = x[mask].loc[:, c].values.mean()
-                entropy_x_given_y = entropy([p_x_given_y, 1 - p_x_given_y])
-                weight = mask.sum() / len(y)
-                conditional_entropies.append(entropy_x_given_y * weight)
-            self.mapper[c] = (1 - sum(conditional_entropies)) / np.log(y["target"].nunique())
-        return self
-
-    def transform(self, x: pd.DataFrame) -> pd.DataFrame:
-        for c in self.mapper:
-            x[c] *= self.mapper[c]
-        return x
-
-    def fit_transform(self, x: pd.DataFrame, y: pd.DataFrame) -> pd.DataFrame:
-        self.fit(x, y)
-        return self.transform(x)
 
 
 class StationaryDataset:
@@ -509,22 +385,3 @@ def download_all(
         if verbose:
             print(f"Processing {dataset_name}...")
         globals()[f"_download_{dataset_name}"](directory=directory)
-
-
-@click.command()
-@click.option("--directory", "-d", default=DEFAULT_DATA_DIR, help="Directory to store datasets")
-@click.option("--silent", "-s", is_flag=True, help="Suppress displaying progress.")
-@click.option("--dataset-names", "-n", default="all", help="Comma-separated list of dataset names to download. "
-                                                           "Allowable values are 'breast_cancer', 'caltech', 'compass', "
-                                                           "'diabetes', 'mnist' and 'rhc'. Use 'all' to download all "
-                                                           "datasets.")
-def main(directory, silent, dataset_names):
-    download_all(
-        directory=directory,
-        dataset_names=[s.strip() for s in dataset_names.split(",")],
-        verbose=not silent
-    )
-
-
-if __name__ == "__main__":
-    main()

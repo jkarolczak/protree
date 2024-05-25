@@ -62,12 +62,14 @@ class KMeans(IExplainer):
             self._fit_select_prototypes(x, y)
         return self
 
-    def select_prototypes(self, x: TDataBatch) -> dict[int | str, pd.DataFrame]:
+    def select_prototypes(self, x: TDataBatch, y: TTarget | None = None) -> TPrototypes:
+
         x = deepcopy(x)
-        if isinstance(x, pd.DataFrame):
-            y = pd.DataFrame({"target": self.model.get_model_predictions(x)})
-        else:
-            y = self.model.get_model_predictions(x).tolist()
+        if not y:
+            if isinstance(x, pd.DataFrame):
+                y = pd.DataFrame({"target": self.model.get_model_predictions(x)})
+            else:
+                y = self.model.get_model_predictions(x).tolist()
 
         if not self.prototypes:
             self._fit_select_prototypes(x, y)
