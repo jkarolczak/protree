@@ -1,22 +1,20 @@
 from __future__ import annotations
 
 import os
-from argparse import ArgumentParser, BooleanOptionalAction
 from pathlib import Path
-from typing import get_args, Literal, TypeAlias
+from typing import Literal, get_args, TypeAlias
 
-import numpy as np
 import pandas as pd
-from scipy.stats import entropy
 from sklearn.preprocessing import OrdinalEncoder, MinMaxScaler
 
+from protree.data.utils import BinaryScaler
 from protree.meta import RANDOM_SEED
 from protree.transformations import MultilabelHotEncoder
 
 DEFAULT_DATA_DIR = os.environ.get("DEFAULT_DATA_DIR", "./data")
 
-TDataset: TypeAlias = Literal["breast_cancer", "caltech", "compass", "diabetes", "mnist", "rhc"]
-categorical_columns: dict[TDataset, list[str]] = {
+TStationaryDataset: TypeAlias = Literal["breast_cancer", "caltech", "compass", "diabetes", "mnist", "rhc"]
+categorical_columns: dict[TStationaryDataset, list[str]] = {
     "breast_cancer": [],
     "caltech": [],
     "compass": ["age_cat", "priors_count", "c_charge_degree"],
@@ -27,39 +25,10 @@ categorical_columns: dict[TDataset, list[str]] = {
 }
 
 
-class BinaryScaler:
-    def __init__(
-            self
-    ) -> None:
-        self.mapper: dict[str, float] = {}
-
-    def fit(self, x: pd.DataFrame, y: pd.DataFrame) -> BinaryScaler:
-        binary_columns = x.columns[x.nunique() == 2]
-        for c in binary_columns:
-            conditional_entropies = []
-            for cls in y["target"].unique():
-                mask = y["target"] == cls
-                p_x_given_y = x[mask].loc[:, c].values.mean()
-                entropy_x_given_y = entropy([p_x_given_y, 1 - p_x_given_y])
-                weight = mask.sum() / len(y)
-                conditional_entropies.append(entropy_x_given_y * weight)
-            self.mapper[c] = (1 - sum(conditional_entropies)) / np.log(y["target"].nunique())
-        return self
-
-    def transform(self, x: pd.DataFrame) -> pd.DataFrame:
-        for c in self.mapper:
-            x[c] *= self.mapper[c]
-        return x
-
-    def fit_transform(self, x: pd.DataFrame, y: pd.DataFrame) -> pd.DataFrame:
-        self.fit(x, y)
-        return self.transform(x)
-
-
-class Dataset:
+class StationaryDataset:
     def __init__(
             self,
-            name: TDataset,
+            name: TStationaryDataset,
             directory: str = DEFAULT_DATA_DIR,
             encode_categorical_variables: bool = True,
             normalise: bool = False,
@@ -135,7 +104,7 @@ class Dataset:
         return x, y
 
     def _get_x_y(self, dataset: Literal["train", "valid", "test"]) -> tuple[pd.DataFrame, pd.DataFrame]:
-        x, y = Dataset.x_y_split(self._read_file(dataset))
+        x, y = StationaryDataset.x_y_split(self._read_file(dataset))
         x = self._x_transform(x, y)
         y = self._y_transform(y)
         return x, y
@@ -399,13 +368,13 @@ def _download_caltech(
 
 def download_all(
         directory: str = DEFAULT_DATA_DIR,
-        dataset_names: list[Literal["all"] | TDataset] = "all",
+        dataset_names: list[Literal["all"] | TStationaryDataset] = "all",
         verbose: bool = True
 ) -> None:
     path = Path(directory)
     path.mkdir(parents=True, exist_ok=True)
 
-    allowable_datasets = get_args(TDataset)
+    allowable_datasets = get_args(TStationaryDataset)
 
     if "all" in dataset_names:
         dataset_names = allowable_datasets
@@ -416,22 +385,3 @@ def download_all(
         if verbose:
             print(f"Processing {dataset_name}...")
         globals()[f"_download_{dataset_name}"](directory=directory)
-
-
-parser = ArgumentParser("Download datasets for running experiments.")
-parser.add_argument("--directory", "-d", default=DEFAULT_DATA_DIR, help="Directory to store datasets")
-parser.add_argument("--silent", "-s", action=BooleanOptionalAction,
-                    help="Supress displaying progress.")
-parser.add_argument("--dataset-names", "-n", default="all", help="Comma-separated list of dataset names to"
-                                                                 " download. Allowable values are 'breast_cancer', "
-                                                                 "'caltech', 'compass', 'diabetes', 'mnist' and 'rhc'. "
-                                                                 "Use 'all' to download all datasets")
-
-if __name__ == "__main__":
-    args = parser.parse_args()
-
-    download_all(
-        directory=args.directory,
-        dataset_names=[s.strip() for s in args.dataset_names.split(",")],
-        verbose=not args.silent
-    )

@@ -7,4 +7,4 @@ def balanced_accuracy(y: np.ndarray, y_hat: np.ndarray) -> float:
         mask = (y == label)
         acc_partial = (y[mask] == y_hat[mask]).mean()
         acc += (acc_partial * mask.sum()) / len(y)
-    return acc
+    return acc.item()

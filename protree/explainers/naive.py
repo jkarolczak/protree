@@ -1,17 +1,22 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 import numpy as np
 import pandas as pd
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans as SKKMeans
 
-from explainers.tree_distance import IExplainer
+from protree import TDataBatch, TTarget, TModel
+from protree.explainers.tree_distance import IExplainer, ModelAdapterBuilder
 from protree.explainers.utils import _type_to_np_dtype
 from protree.meta import RANDOM_SEED
+from protree.utils import get_x_belonging_to_cls, iloc
 
 
-class KMeans:
+class KMeans(IExplainer):
     def __init__(
             self,
+            model: TModel,
             n_prototypes: int = 3,
             init: str = "k-means++",
             n_init: str = "auto",
@@ -24,32 +29,48 @@ class KMeans:
             *args,
             **kwargs
     ) -> None:
+        self.model = ModelAdapterBuilder(model)()
         self.prototypes = {}
         self._kmeans = {}
         self._kwargs = dict(n_clusters=n_prototypes, init=init, n_init=n_init, max_iter=max_iter, tol=tol, verbose=verbose,
                             random_state=random_state, copy_x=copy_x, algorithm=algorithm)
 
-    def _fit_select_prototypes(self, x: pd.DataFrame, y: pd.DataFrame) -> None:
-        classes = y[y.columns[0]].unique()
+    def _fit_select_prototypes(self, x: TDataBatch, y: TTarget) -> None:
+        classes = self.get_classes(y)
         for c in classes:
-            is_in_c = (y[y.columns[0]] == c).to_list()
-            x_partial = x[is_in_c]
+            x_partial = get_x_belonging_to_cls(x, y, c)
+            x_partial_np = x_partial.values if isinstance(x_partial, pd.DataFrame) else pd.DataFrame.from_records(
+                x_partial).values
 
             c_kwargs = self._kwargs.copy()
-            c_kwargs["n_clusters"] = min(c_kwargs["n_clusters"], len(x_partial))
+            c_kwargs["n_clusters"] = min(int(c_kwargs["n_clusters"]), len(x_partial_np))
 
-            self._kmeans[c] = KMeans(**c_kwargs).fit(x_partial)
+            self._kmeans[c] = SKKMeans(**c_kwargs).fit(x_partial_np)
             cluster_centers = self._kmeans[c].cluster_centers_
-            distances = np.linalg.norm(x_partial.values[:, np.newaxis, :] - cluster_centers[np.newaxis, :], axis=2)
-            closest_indices = np.argmin(distances, axis=0)
-            self.prototypes[c] = x_partial.iloc[closest_indices]
+            distances = np.linalg.norm(x_partial_np[:, np.newaxis, :] - cluster_centers[np.newaxis, :], axis=2)
+            closest_indices = []
+            for id_d in range(distances.shape[1]):
+                closest_idx = np.argmin(distances[:, id_d])
+                distances[closest_idx, :] = np.inf
+                closest_indices.append(closest_idx)
+            self.prototypes[c] = iloc(x_partial, closest_indices)
 
-    def fit(self, x: pd.DataFrame, y: pd.DataFrame) -> KMeans:
+    def fit(self, x: pd.DataFrame) -> KMeans:
+        y = pd.DataFrame({"target": self.model.get_model_predictions(x)})
+
         if not self.prototypes:
             self._fit_select_prototypes(x, y)
         return self
 
-    def select_prototypes(self, x: pd.DataFrame, y: pd.DataFrame) -> dict[int | str, pd.DataFrame]:
+    def select_prototypes(self, x: TDataBatch, y: TTarget | None = None) -> TPrototypes:
+
+        x = deepcopy(x)
+        if not y:
+            if isinstance(x, pd.DataFrame):
+                y = pd.DataFrame({"target": self.model.get_model_predictions(x)})
+            else:
+                y = self.model.get_model_predictions(x).tolist()
+
         if not self.prototypes:
             self._fit_select_prototypes(x, y)
         return self.prototypes

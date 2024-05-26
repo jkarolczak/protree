@@ -3,57 +3,59 @@ from copy import deepcopy
 import numpy as np
 import pandas as pd
 
+from protree import TPrototypes, TTarget, TDataBatch
 from protree.explainers.tree_distance import IExplainer
+from protree.utils import get_x_belonging_to_cls, get_re_idx, flatten_prototypes, get_x_not_belonging_to_cls
 
 
 def individual_contribution(
-        prototypes: dict[int | str, pd.DataFrame],
+        prototypes: TPrototypes,
         cls: str | int,
         idx: int,
         explainer: IExplainer,
-        x: pd.DataFrame
+        x: TDataBatch
 ) -> float:
     from protree.metrics.group import fidelity_with_model
 
     prototypes_without = deepcopy(prototypes)
-    prototypes_without[cls].drop(idx, inplace=True)
-
-    if not sum([len(c) for c in prototypes_without.values()]):
-        raise ValueError("Cannot find the prototype of given index in the given class.")
+    if isinstance(prototypes[cls], pd.DataFrame):
+        prototypes_without[cls].drop(idx, inplace=True)
+    else:
+        prototypes_without[cls].pop(idx)
 
     result = fidelity_with_model(prototypes, explainer, x) - fidelity_with_model(prototypes_without, explainer, x)
     return result
 
 
 def voting_frequency(
-        prototypes: dict[int | str, pd.DataFrame],
+        prototypes: TPrototypes,
         cls: str | int,
         idx: int,
         explainer: IExplainer,
-        x: pd.DataFrame
+        x: TDataBatch
 ) -> float:
-    prototypes_flat = pd.concat([prototypes[c] for c in prototypes])
-    re_idx = prototypes_flat.index.to_list().index(idx)
+    prototypes_flat = flatten_prototypes(prototypes)
+    re_idx = get_re_idx(prototypes, cls, idx)
 
     x_leaves = explainer.model.get_leave_indices(x)
     proto_leaves = explainer.model.get_leave_indices(prototypes_flat)
     neighbourhood = []
     for i in range(len(proto_leaves)):
         neighbourhood.append((x_leaves == proto_leaves[i]).sum(axis=1))
-    return (np.vstack(neighbourhood).argmax(axis=0) == re_idx).sum() / len(x)
+    return (np.vstack(neighbourhood).argmax(axis=0) == re_idx).sum().item() / len(x) if len(x) > 0 else 0.0
 
 
-def correct_votes(
-        prototypes: dict[int | str, pd.DataFrame],
+def consistent_votes(
+        prototypes: TPrototypes,
         cls: str | int,
         idx: int,
         explainer: IExplainer,
-        x: pd.DataFrame
+        x: TDataBatch
 ) -> float:
-    prototypes_flat = pd.concat([prototypes[c] for c in prototypes])
-    re_idx = prototypes_flat.index.to_list().index(idx)
+    re_idx = get_re_idx(prototypes, cls, idx)
+    prototypes_flat = flatten_prototypes(prototypes)
 
-    classification = explainer.model.predict(x)
+    classification = explainer.model.get_model_predictions(x)
     mask = classification == cls
 
     x_leaves = explainer.model.get_leave_indices(x)
@@ -63,20 +65,23 @@ def correct_votes(
         neighbourhood.append((x_leaves == proto_leaves[i]).sum(axis=1))
     votes = (np.vstack(neighbourhood).argmax(axis=0) == re_idx)
     correct = np.logical_and(votes, mask).sum()
-    return correct / votes.sum()
+    return (correct / votes.sum()).item() if votes.sum() > 0 else 0.0
 
 
 def hubness(
-        prototypes: dict[int | str, pd.DataFrame],
+        prototypes: TPrototypes,
         cls: str | int,
         idx: int,
         explainer: IExplainer,
-        x: pd.DataFrame,
-        y: pd.DataFrame
+        x: TDataBatch,
+        y: TTarget
 ) -> float:
-    sub_x = x[y["target"] == cls]
+    sub_x = get_x_belonging_to_cls(x, y, cls)
 
-    re_idx = prototypes[cls].index.to_list().index(idx)
+    if not len(sub_x):
+        return 0.0
+
+    re_idx = get_re_idx(prototypes, cls, idx, in_class_only=True)
 
     x_cls_leaves = explainer.model.get_leave_indices(sub_x)
     proto_leaves = explainer.model.get_leave_indices(prototypes[cls])
@@ -84,40 +89,43 @@ def hubness(
     neighbourhood = []
     for i in range(len(proto_leaves)):
         neighbourhood.append((x_cls_leaves == proto_leaves[i]).sum(axis=1))
-    return (np.vstack(neighbourhood).argmax(axis=0) == re_idx).sum() / len(sub_x)
+    return (np.vstack(neighbourhood).argmax(axis=0) == re_idx).sum().item() / len(sub_x) if len(sub_x) > 0 else 0.0
 
 
 def _mean_similarity(
-        sub_x: pd.DataFrame,
-        prototypes: dict[int | str, pd.DataFrame],
+        sub_x: TDataBatch,
+        prototypes: TPrototypes,
         cls: str | int,
         idx: int,
         explainer: IExplainer
 ) -> float:
     x_cls_leaves = explainer.model.get_leave_indices(sub_x)
-    proto_leaves = explainer.model.get_leave_indices(pd.DataFrame(prototypes[cls].loc[idx]).transpose())
-    return (x_cls_leaves == proto_leaves).sum() / np.prod(x_cls_leaves.shape)
+    if isinstance(prototypes[cls], pd.DataFrame):
+        proto_leaves = explainer.model.get_leave_indices(pd.DataFrame(prototypes[cls].loc[idx]).transpose())
+    else:
+        proto_leaves = explainer.model.get_leave_indices([prototypes[cls][idx]])
+    return ((x_cls_leaves == proto_leaves).sum() / np.prod(x_cls_leaves.shape)).item()
 
 
 def individual_in_distribution(
-        prototypes: dict[int | str, pd.DataFrame],
+        prototypes: TPrototypes,
         cls: str | int,
         idx: int,
         explainer: IExplainer,
-        x: pd.DataFrame,
-        y: pd.DataFrame
+        x: TDataBatch,
+        y: TTarget
 ) -> float:
-    sub_x = x[y["target"] == cls]
+    sub_x = get_x_belonging_to_cls(x, y, cls)
     return _mean_similarity(sub_x, prototypes, cls, idx, explainer)
 
 
 def individual_out_distribution(
-        prototypes: dict[int | str, pd.DataFrame],
+        prototypes: TPrototypes,
         cls: str | int,
         idx: int,
         explainer: IExplainer,
-        x: pd.DataFrame,
-        y: pd.DataFrame
+        x: TDataBatch,
+        y: TTarget
 ) -> float:
-    sub_x = x[y["target"] != cls]
+    sub_x = get_x_not_belonging_to_cls(x, y, cls)
     return _mean_similarity(sub_x, prototypes, cls, idx, explainer)

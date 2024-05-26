@@ -1,6 +1,8 @@
 click
+numpy
 pandas
 python-mnist
+river
 scikit-learn
 torch
 torchvision
