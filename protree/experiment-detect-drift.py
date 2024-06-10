@@ -88,9 +88,16 @@ def main(dataset: TDynamicDataset | TStreamGenerator, explainer, n_trees: int, k
     for i, x_ in enumerate(x_split):
         ax[i // 2, i % 2].set_title(f"x{i}")
         ax[i // 2, i % 2].scatter(list(range(len(x_))), x_, c=y_history, label="Feature", cmap=cmap, s=2)
-        ax[i // 2, i % 2].vlines(x=drift_position, linewidth=2, color="black", linestyle="dashed", alpha=0.75,
-                                 label="Real drift position", ymin=0, ymax=1)
-        ax[i // 2, i % 2].vlines(x=[int(d - window_size / 2) for d in drift_history], linewidth=2, color="black", alpha=0.75,
+        if drift_width == 1:
+            ax[i // 2, i % 2].vlines(x=drift_position, linewidth=2, color="black", linestyle="dashed", alpha=0.75,
+                                     label="Real drift position", ymin=0, ymax=1)
+            color = "black"
+        else:
+            for pos in drift_position:
+                ax[i // 2, i % 2].fill_betweenx(y=[0, 1], x1=pos, x2=pos + drift_width, color="black", alpha=0.5,
+                                                label="Real drift position")
+            color = "orange"
+        ax[i // 2, i % 2].vlines(x=[int(d - window_size / 2) for d in drift_history], linewidth=2, color=color, alpha=0.75,
                                  linestyle="solid", label="Detected drift", ymin=0, ymax=1)
         ax[i // 2, i % 2].spines["top"].set_visible(False)
         ax[i // 2, i % 2].spines["right"].set_visible(False)

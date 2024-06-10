@@ -1,5 +1,6 @@
 import click
 import wandb
+from imblearn.metrics import geometric_mean_score
 from sklearn.ensemble import RandomForestClassifier
 
 from protree.data.static import StationaryDataset, DEFAULT_DATA_DIR, TStationaryDataset
@@ -50,6 +51,8 @@ def main(dataset: TStationaryDataset, explainer, directory: str, n_features: str
     model.fit(ds.train[0], ds.train[1]["target"].ravel())
     prototypes = explainer.select_prototypes(ds.train[0])
 
+    gmean_average = "micro"  # "micro" if dataset == "rhc" else "binary"
+
     statistics = {
         "total_n_prototypes": sum([len(c) for c in prototypes.values()]),
         "score/accuracy/train/random_forest": explainer.score(ds.train[0], ds.train[1]),
@@ -58,6 +61,22 @@ def main(dataset: TStationaryDataset, explainer, directory: str, n_features: str
         "score/accuracy/valid/prototypes": explainer.score_with_prototypes(ds.valid[0], ds.valid[1], prototypes),
         "score/accuracy/test/random_forest": explainer.score(ds.test[0], ds.test[1]),
         "score/accuracy/test/prototypes": explainer.score_with_prototypes(ds.test[0], ds.test[1], prototypes),
+
+        "score/gmean/train/random_forest": geometric_mean_score(ds.train[1], model.predict(ds.train[0]),
+                                                                average=gmean_average),
+        "score/gmean/train/prototypes": geometric_mean_score(ds.train[1],
+                                                             explainer.predict_with_prototypes(ds.train[0], prototypes),
+                                                             average=gmean_average),
+        "score/gmean/valid/random_forest": geometric_mean_score(ds.valid[1], model.predict(ds.valid[0]),
+                                                                average=gmean_average),
+        "score/gmean/valid/prototypes": geometric_mean_score(ds.valid[1],
+                                                             explainer.predict_with_prototypes(ds.valid[0], prototypes),
+                                                             average=gmean_average),
+        "score/gmean/test/random_forest": geometric_mean_score(ds.test[1], model.predict(ds.test[0]), average=gmean_average),
+        "score/gmean/test/prototypes": geometric_mean_score(ds.test[1],
+                                                            explainer.predict_with_prototypes(ds.test[0], prototypes),
+                                                            average=gmean_average),
+
         "score/valid/fidelity": fidelity_with_model(prototypes, explainer, ds.valid[0]),
         "score/valid/hubness": mean_entropy_hubness(prototypes, explainer, ds.valid[0]),
         "score/valid/mean_in_distribution": mean_in_distribution(prototypes, explainer, *ds.valid),

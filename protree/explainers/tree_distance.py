@@ -102,7 +102,7 @@ class IExplainer(ABC):
             distances[cls] = self.distance_matrix(class_x)
         return distances
 
-    def get_prototypes_predictions(self, x: TDataBatch, prototypes: TPrototypes) -> np.ndarray:
+    def predict_with_prototypes(self, x: TDataBatch, prototypes: TPrototypes) -> np.ndarray:
         predictions = (np.ones((len(x), 1)) * (-1)).astype(_type_to_np_dtype(prototypes))
         similarity = np.zeros((len(x)))
         x_nodes = self.model.get_leave_indices(x)
@@ -126,7 +126,7 @@ class IExplainer(ABC):
         return balanced_accuracy(y, y_hat)
 
     def score_with_prototypes(self, x: TDataBatch, y: TTarget, prototypes: TPrototypes) -> float:
-        y_hat = self.get_prototypes_predictions(x, prototypes)
+        y_hat = self.predict_with_prototypes(x, prototypes)
         return IExplainer._score(y, y_hat)
 
     def score(self, x: pd.DataFrame, y: pd.DataFrame) -> float:
@@ -285,9 +285,9 @@ class SG(SM_A):
 
 
 class APete(SM_A):
-    def __init__(self, model: TModel, beta: float = 0.05) -> None:
+    def __init__(self, model: TModel, alpha: float = 0.05) -> None:
         super().__init__(model)
-        self.beta = float(beta)
+        self.alpha = float(alpha)
 
     def _find_prototype(self, distances: dict[int | str, np.ndarray], prototypes: dict[int | str, list[int]]
                         ) -> tuple[int | float, int, float]:
@@ -318,6 +318,6 @@ class APete(SM_A):
             for cls in classes:
                 protos[cls] = iloc(get_x_belonging_to_cls(x, y, cls), prototypes[cls])
 
-            if np.abs(prev_improvement - improvement) / improvement <= self.beta:
+            if np.abs(prev_improvement - improvement) / improvement <= self.alpha:
                 return protos
             prev_improvement = improvement
