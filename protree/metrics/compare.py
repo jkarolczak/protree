@@ -44,7 +44,7 @@ def centroids_displacements(a: TPrototypes, b: TPrototypes, penalty: float = 10.
 
     for cls in classes:
         # both empty
-        if len(a[cls]) == 0 and len(b[cls]) == 0:
+        if (cls not in a or len(a[cls]) == 0) and (cls not in b or len(b[cls]) == 0):
             distances[cls] = 0.0
 
         # one empty
@@ -75,13 +75,13 @@ def mean_minimal_distance(a: TPrototypes, b: TPrototypes, penalty: float = 2.0) 
     distances = []
     for cls in classes:
         # both empty
-        if all([len(a[cls]) == 0, len(b[cls]) == 0]):
+        if (cls not in a or len(a[cls]) == 0) and (cls not in b or len(b[cls]) == 0):
             continue
 
         # one empty
-        elif len(a[cls]) == 0:
+        elif cls not in a or len(a[cls]) == 0:
             distances.extend([penalty] * len(b[cls]))
-        elif len(b[cls]) == 0:
+        elif cls not in b or len(b[cls]) == 0:
             distances.extend([penalty] * len(a[cls]))
 
         # both not empty

@@ -10,7 +10,7 @@ from protree.metrics.classification import balanced_accuracy
 
 def fidelity_with_model(prototypes: TPrototypes, explainer: IExplainer, x: TDataBatch) -> float:
     y_model = explainer.model.get_model_predictions(x)
-    y_prototypes = explainer.get_prototypes_predictions(x, prototypes)
+    y_prototypes = explainer.predict_with_prototypes(x, prototypes)
     return balanced_accuracy(y_model, y_prototypes)
 
 
