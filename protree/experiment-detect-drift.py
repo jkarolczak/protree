@@ -110,6 +110,12 @@ def main(dataset: TDynamicDataset | TStreamGenerator, explainer, n_trees: int, k
         ax[len(ax) - 1, 1].get_xaxis().set_ticks([])
         ax[len(ax) - 1, 1].get_yaxis().set_ticks([])
 
+    false_alarms = sum([not any([d - window_size <= dp <= d for dp in drift_position]) for d in drift_history])
+    missed_drifts = sum([not any([d - window_size <= dp <= d for d in drift_history]) for dp in drift_position])
+
+    print("False alarms:", false_alarms)
+    print("Missed drifts:", missed_drifts)
+
     plt.savefig(PLT_FILE_NAME, dpi=200)
     if log:
         wandb.log({
