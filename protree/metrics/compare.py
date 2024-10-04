@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from protree import TDataBatch, TPrototypes
+from protree import TDataBatch, TPrototypes, TTarget
 from protree.explainers.tree_distance import IExplainer
 from protree.explainers.utils import _type_to_np_dtype
 from protree.utils import parse_batch, parse_prototypes
@@ -263,7 +263,7 @@ def classwise_mean_minimal_distance(a: TPrototypes, b: TPrototypes, penalty: flo
     :rtype: dict[int | str, float]
 
     """
-    
+
     classes = set(a.keys()).union(b.keys())
     distances = {}
     for cls in classes:
@@ -279,3 +279,78 @@ def classwise_mean_minimal_distance(a: TPrototypes, b: TPrototypes, penalty: flo
         else:
             distances[cls] = np.mean(_l2_distance_matrix(a, b, cls))
     return distances
+
+
+def _get_accuracy(prototypes: TPrototypes, x: TDataBatch, y: TTarget, explainer: IExplainer | None = None) -> float:
+    """Get accuracy of predictions based on the given prototypes using the Euclidean distance or a custom explainer.
+
+    :param prototypes: Prototypes.
+    :type prototypes: TPrototypes
+    :param x: Input data.
+    :type x: TDataBatch
+    :param y: True class labels for the input data.
+    :type y: TTarget
+    :param explainer: Explainer to generate predictions (Optional).
+    :type explainer: IExplainer
+
+    :returns: The accuracy of the predictions based on the given prototypes.
+    :rtype: float
+
+    """
+
+    from sklearn.metrics import accuracy_score
+
+    predictions, _ = _get_predictions(prototypes, prototypes, x, explainer)
+    return accuracy_score(y, predictions)
+
+
+def swap_deterioration(
+        prototypes_a: TPrototypes,
+        prototypes_b: TPrototypes,
+        x: TDataBatch,
+        y: TTarget,
+        explainer: IExplainer | None = None
+) -> float:
+    """
+    Calculate a distance metric between two sets of prototypes by measuring the change in accuracy when prototypes from
+    one set are temporarily added to the other set.
+
+    :param prototypes_a: First set of prototypes.
+    :type prototypes_a: TPrototypes
+    :param prototypes_b: Second set of prototypes.
+    :type prototypes_b: TPrototypes
+    :param x: Input data.
+    :type x: TDataBatch
+    :param y: True class labels for the input data.
+    :type y: TTarget
+    :param explainer: Explainer to generate predictions (Optional).
+    :type explainer: IExplainer
+
+    :returns: A distance metric score, with higher values indicating greater divergence between the two sets of prototypes.
+    :rtype: float
+    """
+
+    baseline_accuracy = _get_accuracy(prototypes_b, x, y, explainer)
+
+    prototypes_a = parse_prototypes(prototypes_a)
+    prototypes_b = parse_prototypes(prototypes_b)
+
+    accuracy_changes = []
+
+    for cls, prototypes in prototypes_a.items():
+        if len(prototypes) == 0:
+            continue
+
+        for idx, prototype in prototypes.iterrows():
+            temp_prototypes = prototypes_b.copy()
+            if cls not in temp_prototypes:
+                temp_prototypes[cls] = pd.DataFrame()
+            temp_prototypes[cls] = pd.concat([temp_prototypes[cls], prototype.to_frame().T])
+
+            new_accuracy = _get_accuracy(temp_prototypes, x, y, explainer)
+            accuracy_changes.append(np.abs(baseline_accuracy - new_accuracy))
+
+    if accuracy_changes:
+        return np.mean(accuracy_changes)
+    else:
+        return 0.0
