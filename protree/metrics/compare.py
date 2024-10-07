@@ -1,19 +1,21 @@
+from typing import Literal
+
 import numpy as np
 import pandas as pd
 
 from protree import TDataBatch, TPrototypes, TTarget
 from protree.explainers.tree_distance import IExplainer
 from protree.explainers.utils import _type_to_np_dtype
-from protree.utils import parse_batch, parse_prototypes
+from protree.utils import parse_batch, parse_prototypes, flatten_prototypes
 
 
-def get_euclidean_predictions(prototypes: TPrototypes, x: TDataBatch) -> np.ndarray:
+def get_euclidean_predictions(x: TDataBatch, prototypes: TPrototypes) -> np.ndarray:
     """Generate predictions based on Euclidean distance between prototypes and the input data.
 
-    :param prototypes: Prototypes.
-    :type prototypes: TPrototypes
     :param x: Input data.
     :type x: TDataBatch
+    :param prototypes: Prototypes.
+    :type prototypes: TPrototypes
 
     :returns: Assignment of the input data to classes based on Euclidean distance to the nearest prototype.
     :rtype: np.ndarray
@@ -38,19 +40,60 @@ def get_euclidean_predictions(prototypes: TPrototypes, x: TDataBatch) -> np.ndar
     return predictions
 
 
-def _get_predictions(a: TPrototypes, b: TPrototypes, x: TDataBatch, explainer: IExplainer | None = None
-                     ) -> tuple[np.ndarray, np.ndarray]:
+def _get_predictions(x: TDataBatch, prototypes: TPrototypes, explainer: IExplainer | None = None) -> np.ndarray:
     if explainer:
-        predictions_a = explainer.predict_with_prototypes(x, a)
-        predictions_b = explainer.predict_with_prototypes(x, b)
-    else:
-        predictions_a = get_euclidean_predictions(a, x)
-        predictions_b = get_euclidean_predictions(b, x)
-
-    return predictions_a, predictions_b
+        return explainer.predict_with_prototypes(x, prototypes)
+    return get_euclidean_predictions(x, prototypes)
 
 
-def mutual_information(a: TPrototypes, b: TPrototypes, x: TDataBatch, explainer: IExplainer | None = None) -> float:
+def get_euclidean_prototype_assignment(x: TDataBatch, prototypes: TPrototypes) -> np.ndarray:
+    """For each data point, finds the nearest prototype based on Euclidean distance.
+
+    :param x: Input data.
+    :type x: TDataBatch
+    :param prototypes: Prototypes.
+    :type prototypes: TPrototypes
+
+    :returns: Assignment of the input data to nearest prototypes based on Euclidean distance.
+    :rtype: np.ndarray
+
+    """
+
+    prototypes = parse_prototypes(prototypes)
+    prototypes = flatten_prototypes(prototypes)
+    x = parse_batch(x)
+
+    distance_matrix = np.linalg.norm(x.values[:, None, :] - prototypes.values[None, ...], axis=-1)
+    return distance_matrix.argmin(axis=1)
+
+
+def _get_nearest_prototypes(x: TDataBatch, prototypes: TPrototypes, explainer: IExplainer) -> np.ndarray:
+    if explainer:
+        return explainer.get_prototype_assignment(x, prototypes)
+    return get_euclidean_prototype_assignment(x, prototypes)
+
+
+def _get_assignment(a: TPrototypes, b: TPrototypes, x: TDataBatch, explainer_a: IExplainer | None = None,
+                    explainer_b: IExplainer | None = None, assign_to: Literal["prototype", "class"] = "class"
+                    ) -> tuple[np.ndarray, np.ndarray]:
+    if explainer_a and not explainer_b:
+        explainer_b = explainer_a
+
+    match assign_to:
+        case "prototype":
+            assignment_a = _get_nearest_prototypes(x, a, explainer_a)
+            assignment_b = _get_nearest_prototypes(x, b, explainer_b)
+        case "class":
+            assignment_a = _get_predictions(x, a, explainer_a)
+            assignment_b = _get_predictions(x, b, explainer_b)
+        case _:
+            raise ValueError(f"Invalid value for assign_to: {assign_to}")
+
+    return assignment_a.reshape(len(assignment_a)), assignment_b.reshape(len(assignment_b))
+
+
+def mutual_information(a: TPrototypes, b: TPrototypes, x: TDataBatch, explainer_a: IExplainer | None = None,
+                       explainer_b: IExplainer | None = None, assign_to: Literal["prototype", "class"] = "class") -> float:
     """Calculate the similarity metric based on mutual information between two sets of prototypes, with respect to the input
     data. If an explainer is provided, the predictions are based on the explainer, otherwise, the predictions are based on
     Euclidean distance.
@@ -61,8 +104,13 @@ def mutual_information(a: TPrototypes, b: TPrototypes, x: TDataBatch, explainer:
     :type b: TPrototypes
     :param x: Input data.
     :type x: TDataBatch
-    :param explainer: Explainer to generate predictions (Optional).
-    :type explainer: IExplainer
+    :param explainer_a: Explainer to generate predictions for the set of prototypes a (Optional).
+    :type explainer_a: IExplainer | None
+    :param explainer_b: Explainer to generate predictions for the set of predictions b. If explainer_a is provided and
+    explainer_b is not provided, explainer_a is used for both prototypes a and b (Optional).
+    :type explainer_b: IExplainer | None
+    :param assign_to: Whether to compute mutual information based on prototype or class assignment (default = "class").
+    :type assign_to: Literal["prototype", "class"]
 
     :returns: The similarity metric between the two sets of prototypes based on mutual information.
     :rtype: float
@@ -71,12 +119,13 @@ def mutual_information(a: TPrototypes, b: TPrototypes, x: TDataBatch, explainer:
 
     from sklearn.metrics import adjusted_mutual_info_score
 
-    predictions_a, predictions_b = _get_predictions(a, b, x, explainer)
+    assignment_a, assignment_b = _get_assignment(a, b, x, explainer_a, explainer_b, assign_to)
 
-    return adjusted_mutual_info_score(predictions_a, predictions_b, average_method="arithmetic")
+    return adjusted_mutual_info_score(assignment_a, assignment_b, average_method="arithmetic")
 
 
-def rand_index(a: TPrototypes, b: TPrototypes, x: TDataBatch, explainer: IExplainer | None = None) -> float:
+def rand_index(a: TPrototypes, b: TPrototypes, x: TDataBatch, explainer_a: IExplainer | None = None,
+               explainer_b: IExplainer | None = None, assign_to: Literal["prototype", "class"] = "class") -> float:
     """Calculate the similarity metric based on the Rand index between two sets of prototypes, with respect to the input
     data. If an explainer is provided, the predictions are based on the explainer, otherwise, the predictions are based on
     Euclidean distance.
@@ -87,8 +136,13 @@ def rand_index(a: TPrototypes, b: TPrototypes, x: TDataBatch, explainer: IExplai
     :type b: TPrototypes
     :param x: Input data.
     :type x: TDataBatch
-    :param explainer: Explainer to generate predictions (Optional).
-    :type explainer: IExplainer
+    :param explainer_a: Explainer to generate predictions for the set of prototypes a (Optional).
+    :type explainer_a: IExplainer | None
+    :param explainer_b: Explainer to generate predictions for the set of predictions b. If explainer_a is provided and
+    explainer_b is not provided, explainer_a is used for both prototypes a and b (Optional).
+    :type explainer_b: IExplainer | None
+    :param assign_to: Whether to compute mutual information based on prototype or class assignment (default = "class").
+    :type assign_to: Literal["prototype", "class"]
 
     :returns: The similarity metric between the two sets of prototypes based on the Rand index.
     :rtype: float
@@ -97,12 +151,13 @@ def rand_index(a: TPrototypes, b: TPrototypes, x: TDataBatch, explainer: IExplai
 
     from sklearn.metrics import adjusted_rand_score
 
-    predictions_a, predictions_b = _get_predictions(a, b, x, explainer)
+    assignment_a, assignment_b = _get_assignment(a, b, x, explainer_a, explainer_b, assign_to)
 
-    return adjusted_rand_score(predictions_a, predictions_b)
+    return adjusted_rand_score(assignment_a, assignment_b)
 
 
-def fowlkes_mallows(a: TPrototypes, b: TPrototypes, x: TDataBatch, explainer: IExplainer | None = None) -> float:
+def fowlkes_mallows(a: TPrototypes, b: TPrototypes, x: TDataBatch, explainer_a: IExplainer | None = None,
+                    explainer_b: IExplainer | None = None, assign_to: Literal["prototype", "class"] = "class") -> float:
     """Calculate the similarity metric based on the Fowlkes-Mallows index between two sets of prototypes, with respect to the
     input data. If an explainer is provided, the predictions are based on the explainer, otherwise, the predictions are based
     on Euclidean distance.
@@ -113,8 +168,13 @@ def fowlkes_mallows(a: TPrototypes, b: TPrototypes, x: TDataBatch, explainer: IE
     :type b: TPrototypes
     :param x: Input data.
     :type x: TDataBatch
-    :param explainer: Explainer to generate predictions (Optional).
-    :type explainer: IExplainer
+    :param explainer_a: Explainer to generate predictions for the set of prototypes a (Optional).
+    :type explainer_a: IExplainer | None
+    :param explainer_b: Explainer to generate predictions for the set of predictions b. If explainer_a is provided and
+    explainer_b is not provided, explainer_a is used for both prototypes a and b (Optional).
+    :type explainer_b: IExplainer | None
+    :param assign_to: Whether to compute mutual information based on prototype or class assignment (default = "class").
+    :type assign_to: Literal["prototype", "class"]
 
     :returns: The similarity metric between the two sets of prototypes based on the Fowlkes-Mallows index.
     :rtype: float
@@ -123,12 +183,16 @@ def fowlkes_mallows(a: TPrototypes, b: TPrototypes, x: TDataBatch, explainer: IE
 
     from sklearn.metrics import fowlkes_mallows_score
 
-    predictions_a, predictions_b = _get_predictions(a, b, x, explainer)
+    if explainer_a and not explainer_b:
+        explainer_b = explainer_a
 
-    return fowlkes_mallows_score(predictions_a, predictions_b)
+    assignment_a, assignment_b = _get_assignment(a, b, x, explainer_a, explainer_b, assign_to)
+
+    return fowlkes_mallows_score(assignment_a, assignment_b)
 
 
-def completeness(a: TPrototypes, b: TPrototypes, x: TDataBatch, explainer: IExplainer | None = None) -> float:
+def completeness(a: TPrototypes, b: TPrototypes, x: TDataBatch, explainer_a: IExplainer | None = None,
+                 explainer_b: IExplainer | None = None, assign_to: Literal["prototype", "class"] = "class") -> float:
     """Calculate the similarity metric based on the completeness score between two sets of prototypes, with respect to the
     input data. If an explainer is provided, the predictions are based on the explainer, otherwise, the predictions are based
     on Euclidean distance.
@@ -139,8 +203,13 @@ def completeness(a: TPrototypes, b: TPrototypes, x: TDataBatch, explainer: IExpl
     :type b: TPrototypes
     :param x: Input data.
     :type x: TDataBatch
-    :param explainer: Explainer to generate predictions (Optional).
-    :type explainer: IExplainer
+    :param explainer_a: Explainer to generate predictions for the set of prototypes a (Optional).
+    :type explainer_a: IExplainer | None
+    :param explainer_b: Explainer to generate predictions for the set of predictions b. If explainer_a is provided and
+    explainer_b is not provided, explainer_a is used for both prototypes a and b (Optional).
+    :type explainer_b: IExplainer | None
+    :param assign_to: Whether to compute mutual information based on prototype or class assignment (default = "class").
+    :type assign_to: Literal["prototype", "class"]
 
     :returns: The similarity metric between the two sets of prototypes based on the completeness score.
     :rtype: float
@@ -149,9 +218,12 @@ def completeness(a: TPrototypes, b: TPrototypes, x: TDataBatch, explainer: IExpl
 
     from sklearn.metrics import completeness_score
 
-    predictions_a, predictions_b = _get_predictions(a, b, x, explainer)
+    if explainer_a and not explainer_b:
+        explainer_b = explainer_a
 
-    return completeness_score(predictions_a, predictions_b)
+    assignment_a, assignment_b = _get_assignment(a, b, x, explainer_a, explainer_b, assign_to)
+
+    return completeness_score(assignment_a, assignment_b)
 
 
 def centroids_displacements(a: TPrototypes, b: TPrototypes, penalty: float = 10.0) -> dict[int | str, float]:
@@ -300,7 +372,7 @@ def _get_accuracy(prototypes: TPrototypes, x: TDataBatch, y: TTarget, explainer:
 
     from sklearn.metrics import accuracy_score
 
-    predictions, _ = _get_predictions(prototypes, prototypes, x, explainer)
+    predictions = _get_predictions(x, prototypes, explainer)
     return accuracy_score(y, predictions)
 
 

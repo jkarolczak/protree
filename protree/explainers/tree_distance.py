@@ -1,5 +1,6 @@
 import warnings
 from abc import ABC
+from copy import deepcopy
 from typing import Iterable
 
 import numpy as np
@@ -10,7 +11,7 @@ from sklearn.ensemble import RandomForestClassifier as _SKLearnRandomForestClass
 from protree import TModel, TDataPoint, TDataBatch, TTarget, TPrototypes
 from protree.explainers.utils import parse_input, _type_to_np_dtype, predict_leaf_one
 from protree.metrics.classification import balanced_accuracy
-from protree.utils import iloc, get_x_belonging_to_cls
+from protree.utils import iloc, get_x_belonging_to_cls, flatten_prototypes, parse_prototypes
 
 
 class IModelAdapter(ABC):
@@ -115,6 +116,23 @@ class IExplainer(ABC):
                 mask = prototype_similarity > similarity
                 predictions[mask] = cls
                 similarity[mask] = prototype_similarity[mask]
+        return predictions
+
+    def get_prototype_assignment(self, x: TDataBatch, prototypes: TPrototypes) -> np.ndarray:
+        prototypes = deepcopy(prototypes)
+        prototypes = parse_prototypes(prototypes)
+        prototypes = flatten_prototypes(prototypes)
+        x_nodes = self.model.get_leave_indices(x)
+
+        predictions = np.ones((len(x), 1)) * (-1)
+        similarity = np.zeros((len(x)))
+
+        for idx, prototype in prototypes.iterrows():
+            prototype_leaves = self.model.get_leave_indices([prototype])
+            prototype_similarity = (prototype_leaves == x_nodes).sum(axis=1) / self.model.n_trees
+            mask = prototype_similarity > similarity
+            predictions[mask] = idx
+            similarity[mask] = prototype_similarity[mask]
         return predictions
 
     @staticmethod
