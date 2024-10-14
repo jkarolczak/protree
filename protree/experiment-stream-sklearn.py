@@ -6,17 +6,17 @@ import wandb
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import MinMaxScaler
 
-from protree import TPrototypes, TDataBatch
+from protree import TPrototypes, TDataBatch, TTarget
 from protree.data.river import TDynamicDataset, DynamicDatasetFactory
 from protree.data.stream_generators import TStreamGenerator, StreamGeneratorFactory
 from protree.explainers import TExplainer, Explainer
 from protree.meta import RANDOM_SEED
-from protree.metrics.compare import mutual_information, mean_minimal_distance, mean_centroid_displacement, \
-    centroids_displacements, classwise_mean_minimal_distance
+from protree.metrics.compare import mutual_information, mean_minimal_distance, mean_centroid_displacement, rand_index, \
+    centroids_displacements, classwise_mean_minimal_distance, swap_deterioration, completeness, fowlkes_mallows
 from protree.utils import pprint_dict
 
 
-def create_comparison_dict(a: TPrototypes, b: TPrototypes, x: TDataBatch) -> dict[str, float | list[float]]:
+def create_comparison_dict(a: TPrototypes, b: TPrototypes, x: TDataBatch, y: TTarget) -> dict[str, float | list[float]]:
     a, b = deepcopy(a), deepcopy(b)
     return {
         "total_n_prototypes (a)": sum(len(a[cls]) for cls in a),
@@ -28,6 +28,10 @@ def create_comparison_dict(a: TPrototypes, b: TPrototypes, x: TDataBatch) -> dic
         "classwise_mean_minimal_distance": classwise_mean_minimal_distance(a, b),
         "mean_centroid_displacement": mean_centroid_displacement(a, b),
         "centroids_displacements": centroids_displacements(a, b),
+        "swap_deterioration": swap_deterioration(a, b, x, y),
+        "completeness": completeness(a, b, x),
+        "fowlkes_mallows": fowlkes_mallows(a, b, x),
+        "rand_index": rand_index(a, b, x)
     }
 
 
@@ -86,7 +90,7 @@ def main(dataset: TDynamicDataset | TStreamGenerator, explainer, n_trees: int, k
     explainer_pre_1: TExplainer = Explainer[explainer].value(model=model_pre_1, **kw_args_dict)
     prototypes_pre_1 = explainer_pre_1.select_prototypes(pre_1[0])
 
-    pre_statistics = create_comparison_dict(prototypes_pre_0, prototypes_pre_1, pre_1[0])
+    pre_statistics = create_comparison_dict(prototypes_pre_0, prototypes_pre_1, *pre_1)
 
     # phase 5: model adaptation after drift
     model_post = RandomForestClassifier(n_estimators=n_trees, random_state=RANDOM_SEED).fit(*post)
@@ -95,7 +99,7 @@ def main(dataset: TDynamicDataset | TStreamGenerator, explainer, n_trees: int, k
     explainer_post: TExplainer = Explainer[explainer].value(model=model_post, **kw_args_dict)
     prototypes_post = explainer_post.select_prototypes(post[0])
 
-    post_statistics = create_comparison_dict(prototypes_pre_1, prototypes_post, post[0])
+    post_statistics = create_comparison_dict(prototypes_pre_1, prototypes_post, *post)
 
     statistics = {
         "pre-pre": pre_statistics,
