@@ -7,6 +7,7 @@ import numpy as np
 from sklearn.datasets import make_classification
 from sklearn.tree import DecisionTreeClassifier
 
+from protree import TDataBatch, TTarget
 from protree.meta import RANDOM_SEED
 
 TStreamGenerator: TypeAlias = Literal["sine", "plane", "random_tree", "make_classification"]
@@ -30,7 +31,7 @@ class IStreamGenerator(ABC):
         np.random.seed(seed)
 
     @abstractmethod
-    def take(self, n: int) -> list[tuple[dict[str, float], int]]:
+    def take(self, n: int) -> list[tuple[TDataBatch, TTarget]]:
         pass
 
     def __iter__(self) -> IStreamGenerator:
@@ -188,7 +189,7 @@ class RandomTree(IStreamGenerator):
 
 class MakeClassification(IStreamGenerator):
     def __init__(self, drift_position: int | list[int] = 500, drift_width: int = 1, seed: int = 42,
-                 n_informative: int = 5, n_redundant: int = 0, stream_length: int = 15000) -> None:
+                 n_informative: int = 5, n_redundant: int = 0, stream_length: int = 30000) -> None:
         super().__init__(drift_position, drift_width, seed)
         self.stream = make_classification(n_features=n_informative + n_redundant, n_informative=n_informative,
                                           n_redundant=n_redundant, n_clusters_per_class=4,
