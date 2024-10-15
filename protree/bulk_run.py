@@ -6,49 +6,48 @@ import click
 def run_static_explanation() -> None:
     command_base = "python protree/experiment-static.py --log -t 1000 -d ./data "
 
-
-for dataset, p, alg, kw in [
-    ("breast_cancer", 0.33, "SM_A", "n_prototypes=18"),
-    ("breast_cancer", 0.33, "SM_WA", "n_prototypes=15"),
-    ("breast_cancer", 0.33, "KMeans", "n_prototypes=4"),
-    ("breast_cancer", 0.33, "G_KM", "n_prototypes=4"),
-    ("breast_cancer", 0.33, "APete", "alpha=0.05"),
-    ("diabetes", "sqrt", "SM_A", "n_prototypes=4"),
-    ("diabetes", "sqrt", "SM_WA", "n_prototypes=4"),
-    ("diabetes", "sqrt", "G_KM", "n_prototypes=3"),
-    ("diabetes", "sqrt", "KMeans", "n_prototypes=3"),
-    ("diabetes", "sqrt", "APete", "alpha=0.05"),
-    ("compass", "sqrt", "SM_A", "n_prototypes=13"),
-    ("compass", "sqrt", "SM_WA", "n_prototypes=11"),
-    ("compass", "sqrt", "KMeans", "n_prototypes=5"),
-    ("compass", "sqrt", "G_KM", "n_prototypes=5"),
-    ("compass", "sqrt", "APete", "alpha=0.01"),
-    ("rhc", 0.7, "SM_A", "n_prototypes=13"),
-    ("rhc", 0.7, "SM_WA", "n_prototypes=10"),
-    ("rhc", 0.7, "G_KM", "n_prototypes=3"),
-    ("rhc", 0.7, "KMeans", "n_prototypes=3"),
-    ("rhc", 0.7, "APete", "alpha=0.01"),
-    ("mnist", 0.33, "SM_A", "n_prototypes=12"),
-    ("mnist", 0.33, "SM_WA", "n_prototypes=12"),
-    ("mnist", 0.33, "G_KM", "n_prototypes=7"),
-    ("mnist", 0.33, "KMeans", "n_prototypes=7"),
-    ("mnist", 0.33, "APete", "alpha=0.05"),
-    ("caltech", 0.7, "SM_A", "n_prototypes=6"),
-    ("caltech", 0.7, "SM_WA", "n_prototypes=3"),
-    ("caltech", 0.7, "G_KM", "n_prototypes=3"),
-    ("caltech", 0.7, "KMeans", "n_prototypes=3"),
-    ("caltech", 0.7, "APete", "alpha=0.05"),
-]:
-    command = command_base + f" -p {p} -kw {kw} {dataset} {alg}"
-    print(command)
-    os.system(command)
+    for dataset, p, alg, kw in [
+        ("breast_cancer", 0.33, "SM_A", "n_prototypes=18"),
+        ("breast_cancer", 0.33, "SM_WA", "n_prototypes=15"),
+        ("breast_cancer", 0.33, "KMeans", "n_prototypes=4"),
+        ("breast_cancer", 0.33, "G_KM", "n_prototypes=4"),
+        ("breast_cancer", 0.33, "APete", "alpha=0.05"),
+        ("diabetes", "sqrt", "SM_A", "n_prototypes=4"),
+        ("diabetes", "sqrt", "SM_WA", "n_prototypes=4"),
+        ("diabetes", "sqrt", "G_KM", "n_prototypes=3"),
+        ("diabetes", "sqrt", "KMeans", "n_prototypes=3"),
+        ("diabetes", "sqrt", "APete", "alpha=0.05"),
+        ("compass", "sqrt", "SM_A", "n_prototypes=13"),
+        ("compass", "sqrt", "SM_WA", "n_prototypes=11"),
+        ("compass", "sqrt", "KMeans", "n_prototypes=5"),
+        ("compass", "sqrt", "G_KM", "n_prototypes=5"),
+        ("compass", "sqrt", "APete", "alpha=0.01"),
+        ("rhc", 0.7, "SM_A", "n_prototypes=13"),
+        ("rhc", 0.7, "SM_WA", "n_prototypes=10"),
+        ("rhc", 0.7, "G_KM", "n_prototypes=3"),
+        ("rhc", 0.7, "KMeans", "n_prototypes=3"),
+        ("rhc", 0.7, "APete", "alpha=0.01"),
+        ("mnist", 0.33, "SM_A", "n_prototypes=12"),
+        ("mnist", 0.33, "SM_WA", "n_prototypes=12"),
+        ("mnist", 0.33, "G_KM", "n_prototypes=7"),
+        ("mnist", 0.33, "KMeans", "n_prototypes=7"),
+        ("mnist", 0.33, "APete", "alpha=0.05"),
+        ("caltech", 0.7, "SM_A", "n_prototypes=6"),
+        ("caltech", 0.7, "SM_WA", "n_prototypes=3"),
+        ("caltech", 0.7, "G_KM", "n_prototypes=3"),
+        ("caltech", 0.7, "KMeans", "n_prototypes=3"),
+        ("caltech", 0.7, "APete", "alpha=0.05"),
+    ]:
+        command = command_base + f" -p {p} -kw {kw} {dataset} {alg}"
+        print(command)
+        os.system(command)
 
 
 def run_drift_explanation_sklearn() -> None:
-    command_base = "python protree/experiment-stream-sklearn.py --log -t 300 -cs 2000 -dw 1 "
+    command_base = "python protree/experiment-stream-sklearn.py --log -t 300 -cs 10000 -dw 1 "
     for dataset in ["sine", "random_tree", "make_classification", "plane"]:
         for alg, kw in [
-            *[("APete", f"alpha={n}") for n in (0.05, 0.01)],
+            *[("APete", f"alpha={n}") for n in (0.05,)],
         ]:
             command = command_base + f" -kw {kw} {dataset} {alg}"
             print(command)

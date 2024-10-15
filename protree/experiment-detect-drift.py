@@ -120,7 +120,9 @@ def main(dataset: TDynamicDataset | TStreamGenerator, explainer, n_trees: int, k
     if log:
         wandb.log({
             "drifts": wandb.Image(PLT_FILE_NAME),
-            "detected_drifts": drift_history
+            "detected_drifts": drift_history,
+            "false_alarms": false_alarms,
+            "missed_drifts": missed_drifts
         })
         wandb.finish(quiet=True)
 

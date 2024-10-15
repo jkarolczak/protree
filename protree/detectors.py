@@ -6,7 +6,7 @@ from river.base import DriftDetector
 from river.forest import ARFClassifier
 from sklearn.ensemble import RandomForestClassifier
 
-from protree import TPrototypes
+from protree import TPrototypes, TDataBatch, TTarget
 from protree.explainers import TExplainer, APete
 
 
@@ -38,7 +38,7 @@ class Ancient(DriftDetector):
         self._check_counter = 0
         self._in_drift = False
 
-    def update(self, x, y) -> None:
+    def update(self, x: TDataBatch, y: TTarget) -> None:
         self._update_x_window(x)
         self._update_y_window(y)
         self._update_counter()
@@ -46,12 +46,12 @@ class Ancient(DriftDetector):
         if not self._check_counter and (self._iter_counter > self.cold_start) and len(self.x_window) == self.window_length:
             self._detect_drift()
 
-    def _update_x_window(self, x) -> None:
+    def _update_x_window(self, x: TDataBatch) -> None:
         self.x_window.append(x)
         if len(self.x_window) > self.window_length:
             self.x_window.pop(0)
 
-    def _update_y_window(self, y) -> None:
+    def _update_y_window(self, y: TDataBatch) -> None:
         self.y_window.append(y)
         if len(self.y_window) > self.window_length:
             self.y_window.pop(0)

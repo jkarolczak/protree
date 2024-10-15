@@ -376,32 +376,8 @@ def _get_accuracy(prototypes: TPrototypes, x: TDataBatch, y: TTarget, explainer:
     return accuracy_score(y, predictions)
 
 
-def swap_deterioration(
-        prototypes_a: TPrototypes,
-        prototypes_b: TPrototypes,
-        x: TDataBatch,
-        y: TTarget,
-        explainer: IExplainer | None = None
-) -> float:
-    """
-    Calculate a distance metric between two sets of prototypes by measuring the change in accuracy when prototypes from
-    one set are temporarily added to the other set.
-
-    :param prototypes_a: First set of prototypes.
-    :type prototypes_a: TPrototypes
-    :param prototypes_b: Second set of prototypes.
-    :type prototypes_b: TPrototypes
-    :param x: Input data.
-    :type x: TDataBatch
-    :param y: True class labels for the input data.
-    :type y: TTarget
-    :param explainer: Explainer to generate predictions (Optional).
-    :type explainer: IExplainer
-
-    :returns: A distance metric score, with higher values indicating greater divergence between the two sets of prototypes.
-    :rtype: float
-    """
-
+def _one_way_swap_delta(prototypes_a: TPrototypes, prototypes_b: TPrototypes, x: TDataBatch, y: TTarget,
+                        explainer: IExplainer | None = None) -> float:
     baseline_accuracy = _get_accuracy(prototypes_b, x, y, explainer)
 
     prototypes_a = parse_prototypes(prototypes_a)
@@ -426,3 +402,29 @@ def swap_deterioration(
         return np.mean(accuracy_changes)
     else:
         return 0.0
+
+
+def swap_delta(prototypes_a: TPrototypes, prototypes_b: TPrototypes, x: TDataBatch, y: TTarget,
+               explainer: IExplainer | None = None) -> float:
+    """
+    Calculate a distance metric between two sets of prototypes by measuring the change in accuracy when prototypes from
+    one set are temporarily added to the other set. This metrics is symmetric as it calculates changes in accuracy in both
+    directions (from prototypes a to b and from prototypes b to a).
+
+    :param prototypes_a: First set of prototypes.
+    :type prototypes_a: TPrototypes
+    :param prototypes_b: Second set of prototypes.
+    :type prototypes_b: TPrototypes
+    :param x: Input data.
+    :type x: TDataBatch
+    :param y: True class labels for the input data.
+    :type y: TTarget
+    :param explainer: Explainer to generate predictions (Optional).
+    :type explainer: IExplainer
+
+    :returns: A distance metric score, with higher values indicating greater divergence between the two sets of prototypes.
+    :rtype: float
+    """
+    one_way_deterioration_a = _one_way_swap_delta(prototypes_a, prototypes_b, x, y, explainer)
+    one_way_deterioration_b = _one_way_swap_delta(prototypes_b, prototypes_a, x, y, explainer)
+    return (one_way_deterioration_a + one_way_deterioration_b) / 2
