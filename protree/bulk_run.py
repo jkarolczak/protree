@@ -44,29 +44,25 @@ def run_static_explanation() -> None:
 
 
 def run_drift_explanation_sklearn() -> None:
-    command_base = "python protree/experiment-stream-sklearn.py --log -t 300 -cs 10000 -dw 1 "
+    command_base = "python protree/experiment-stream-sklearn.py --log -t 300 -dw 1 "
     for dataset in ["sine", "random_tree", "make_classification", "plane"]:
         for alg, kw in [
             *[("APete", f"alpha={n}") for n in (0.05,)],
         ]:
-            command = command_base + f" -kw {kw} {dataset} {alg}"
-            print(command)
-            os.system(command)
+            for bs in [250, 2500, 10000, 25000]:
+                command = command_base + f" -bs {bs} -kw {kw} {dataset} {alg}"
+                print(command)
+                os.system(command)
 
 
 def run_drift_detection() -> None:
-    command_base = "python protree/experiment-detect-drift.py --log -t 500 -dp 450 -dp 800 -dp 1200 -dp 1800 -dw 1 "
-    for dataset in ["sine", "random_tree", "make_classification", "plane"]:
-        for ws in [200, 300, 400]:
-            for m, a in (
-                    *[("minimal_distance", a) for a in [0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6]],
-                    *[("centroid_displacement", a) for a in [0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6]],
-                    *[("mutual_info", a) for a in [0.01, 0.05, 0.1, 0.15, 0.2]],
-            ):
-                for kw in [f"alpha={n}" for n in (0.05, 0.01)]:
-                    command = command_base + f" -ws {ws} -a {a} -kw {kw} {dataset} APete"
-                    print(command)
-                    os.system(command)
+    command_base = "python protree/experiment-detect-drift.py --log -t 200 -bs 2000 --kw_args=\"n_prototypes=5\" "
+    # for dataset in ["sine1", "sine500", "plane100", "plane1000", "random_tree20", "random_tree500", "RBF1", "Agrawal1",
+    #                 "Agrawal200", "SEA1", "SEA1000"]:
+    for dataset in ["Agrawal1", "Agrawal200", "SEA1", "SEA1000", "RBF1"]:
+        command = command_base + f"{dataset} G_KM"
+        print(command)
+        os.system(command)
 
 
 @click.command()

@@ -7,7 +7,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import MinMaxScaler
 
 from protree import TPrototypes, TDataBatch, TTarget
-from protree.data.river import TDynamicDataset, DynamicDatasetFactory
+from protree.data.river import TDynamicDataset
 from protree.data.stream_generators import TStreamGenerator, StreamGeneratorFactory
 from protree.explainers import TExplainer, Explainer
 from protree.explainers.tree_distance import IExplainer
@@ -52,31 +52,28 @@ def create_comparison_dict(a: TPrototypes, b: TPrototypes, x: TDataBatch, y: TTa
 
 
 @click.command()
-@click.argument("dataset", type=click.Choice(TDynamicDataset.__args__ + TStreamGenerator.__args__))
+@click.argument("dataset", type=click.Choice(TStreamGenerator.__args__))
 @click.argument("explainer", type=click.Choice(["KMeans", "G_KM", "SM_A", "SM_WA", "SG", "APete"]))
 @click.option("--n_trees", "-t", default=300, help="Number of trees. Allowable values are positive ints.")
 @click.option("--kw_args", "-kw", type=str, default="",
               help="Additional, keyword arguments for the explainer. Must be in the form of key=value,key2=value2...")
-@click.option("--chunk_size", "-cs", type=int, default=2000, help="The size of the memory.")
+@click.option("--block_size", "-bs", type=int, default=2000, help="The size of the block.")
 @click.option("--drift_width", "-dw", type=int, default=1, help="The width of the drift.")
 @click.option("--log", is_flag=True, help="A flag indicating whether to log the results to wandb.")
-def main(dataset: TDynamicDataset | TStreamGenerator, explainer, n_trees: int, kw_args: str, chunk_size: int, drift_width: int,
+def main(dataset: TDynamicDataset | TStreamGenerator, explainer, n_trees: int, kw_args: str, block_size: int, drift_width: int,
          log: bool) -> None:
     kw_args_dict = dict([arg.split("=") for arg in (kw_args.split(",") if kw_args else [])])
-    if dataset in TStreamGenerator.__args__:
-        ds = StreamGeneratorFactory.create(name=dataset, drift_position=2 * chunk_size, drift_width=drift_width)
-    elif dataset in TDynamicDataset.__args__:
-        ds = DynamicDatasetFactory.create(name=dataset, drift_position=2 * chunk_size, drift_width=drift_width)
-    ds = list(ds.take(3 * chunk_size))
+    ds = StreamGeneratorFactory.create(name=dataset, drift_position=2 * block_size, drift_duration=drift_width)
+    ds = list(ds.take(3 * block_size))
     x = pd.DataFrame.from_records([x for x, _ in ds])
     y = pd.DataFrame({"target": [y for _, y in ds]})
 
     scaler = MinMaxScaler()
     x[x.columns.tolist()] = scaler.fit_transform(x.values)
 
-    pre_0 = (x.iloc[:chunk_size, :], y.iloc[:chunk_size, :])
-    pre_1 = (x.iloc[chunk_size:2 * chunk_size, :], y.iloc[chunk_size:2 * chunk_size, :])
-    post = (x.iloc[2 * chunk_size:3 * chunk_size, :], y.iloc[2 * chunk_size:3 * chunk_size, :])
+    pre_0 = (x.iloc[:block_size, :], y.iloc[:block_size, :])
+    pre_1 = (x.iloc[block_size:2 * block_size, :], y.iloc[block_size:2 * block_size, :])
+    post = (x.iloc[2 * block_size:3 * block_size, :], y.iloc[2 * block_size:3 * block_size, :])
 
     # phase 1: model adaptation
     model_pre_0 = RandomForestClassifier(n_estimators=n_trees, random_state=RANDOM_SEED).fit(*pre_1)
@@ -95,6 +92,7 @@ def main(dataset: TDynamicDataset | TStreamGenerator, explainer, n_trees: int, k
                 "explainer": type(explainer).__name__,
                 "dataset": dataset,
                 "n_estimators": n_trees,
+                "block_size": block_size,
                 **kw_args_dict
             }
         )
