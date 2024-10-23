@@ -9,6 +9,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     environment: protree-whl
+    permissions:
+      contents: write
+
 
     steps:
       - name: Checkout repository
