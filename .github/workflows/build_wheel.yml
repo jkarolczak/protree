@@ -1,4 +1,4 @@
-name: Build Python Wheel
+name: Build Python Wheel and Release
 
 on:
   push:
@@ -8,6 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    environment: protree-whl
 
     steps:
       - name: Checkout repository
@@ -37,3 +38,13 @@ jobs:
         uses: pypa/gh-action-pypi-publish@v1
         with:
           password: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
