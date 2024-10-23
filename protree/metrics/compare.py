@@ -393,7 +393,7 @@ def _one_way_swap_delta(prototypes_a: TPrototypes, prototypes_b: TPrototypes, x:
             temp_prototypes = prototypes_b.copy()
             if cls not in temp_prototypes:
                 temp_prototypes[cls] = pd.DataFrame()
-            temp_prototypes[cls] = pd.concat([temp_prototypes[cls], prototype.to_frame().T])
+            temp_prototypes[cls] = pd.concat([temp_prototypes[cls], prototype.to_frame().T]).reset_index(drop=True)
 
             new_accuracy = _get_accuracy(temp_prototypes, x, y, explainer)
             accuracy_changes.append(np.abs(baseline_accuracy - new_accuracy))

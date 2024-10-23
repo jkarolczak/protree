@@ -76,7 +76,7 @@ class IExplainer(ABC):
     def __init__(self, model: TModel, *args, **kwargs) -> None:
         self.model = ModelAdapterBuilder(model)()
 
-    def par_similarity(self, x1: TDataPoint, x2: TDataPoint) -> float:
+    def pair_similarity(self, x1: TDataPoint, x2: TDataPoint) -> float:
         nodes1 = self.model.get_leave_indices(parse_input(x1))
         nodes2 = self.model.get_leave_indices(parse_input(x2))
 
@@ -84,13 +84,7 @@ class IExplainer(ABC):
 
     def similarity_matrix(self, batch: TDataBatch) -> np.ndarray:
         nodes = self.model.get_leave_indices(batch)
-
-        shape = len(batch)
-        matrix = np.zeros((shape, shape), dtype=float)
-        for i in range(shape):
-            matrix[i] = (nodes[i] == nodes).sum(axis=1)
-        matrix /= self.model.n_trees
-        return matrix
+        return np.dot(nodes, nodes.T) / self.model.n_trees
 
     def distance_matrix(self, batch: TDataBatch) -> np.ndarray:
         return 1 - self.similarity_matrix(batch)
@@ -104,18 +98,21 @@ class IExplainer(ABC):
         return distances
 
     def predict_with_prototypes(self, x: TDataBatch, prototypes: TPrototypes) -> np.ndarray:
-        predictions = (np.ones((len(x), 1)) * (-1)).astype(_type_to_np_dtype(prototypes))
-        similarity = np.zeros((len(x)))
+        prototypes = parse_prototypes(prototypes)
+        x = parse_input(x)
+
+        predictions = np.full((len(x), 1), -1, dtype=_type_to_np_dtype(prototypes))
+        similarity = np.zeros(len(x))
         x_nodes = self.model.get_leave_indices(x)
 
-        for cls in prototypes:
-            for _, prototype in (
-                    prototypes[cls].iterrows() if hasattr(prototypes[cls], "iterrows") else enumerate(prototypes[cls])):
-                prototype_leaves = self.model.get_leave_indices([prototype])
-                prototype_similarity = (prototype_leaves == x_nodes).sum(axis=1) / self.model.n_trees
-                mask = prototype_similarity > similarity
-                predictions[mask] = cls
-                similarity[mask] = prototype_similarity[mask]
+        for cls, proto_data in prototypes.items():
+            proto_nodes = self.model.get_leave_indices(
+                proto_data if isinstance(proto_data, pd.DataFrame) else list(proto_data))
+            proto_similarity = np.dot(proto_nodes, x_nodes.T) / self.model.n_trees
+            mask = proto_similarity > similarity
+            predictions[mask] = cls
+            similarity[mask] = proto_similarity[mask]
+
         return predictions
 
     def get_prototype_assignment(self, x: TDataBatch, prototypes: TPrototypes) -> np.ndarray:
@@ -169,16 +166,10 @@ class G_KM(IExplainer):
         self.n_prototypes = int(n_prototypes)
 
     def _find_classwise_prototype(self, matrix: np.ndarray, prototypes: list[int]) -> int:
-        if not prototypes:
-            idx = np.argmin(matrix.sum(axis=1))
-            return idx
-
         mask = np.in1d(range(matrix.shape[0]), prototypes)
-        current_partial_distances = matrix[mask].min(axis=0)
-        candidates = matrix[~mask]
-        candidate_distances = np.minimum(candidates, current_partial_distances).sum(axis=1)
-        original_idx = np.where(~mask)[0][np.argmin(candidate_distances)]
-        return original_idx
+        current_partial_distances = np.minimum.reduce(matrix[mask], axis=0) if prototypes else np.inf
+        candidate_distances = np.minimum(matrix[~mask], current_partial_distances).sum(axis=1)
+        return np.where(~mask)[0][np.argmin(candidate_distances)]
 
     def _find_single_class_prototypes(self, matrix: np.ndarray) -> list[int]:
         prototypes = []
