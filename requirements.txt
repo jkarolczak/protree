@@ -1,5 +1,6 @@
 click
 imbalanced-learn
+matplotlib
 numpy
 pandas
 python-mnist

@@ -11,8 +11,8 @@ from protree import TPrototypes, TDataBatch, TTarget
 from protree.explainers import TExplainer, APete
 
 
-class PEDTS_B(DriftDetector):
-    """Prototype Explanation and Detection for Tree-based classifiers for Streams (block).
+class ProtoBDrift(DriftDetector):
+    """Prototypes-based drift detector for block data streams.
 
     """
 

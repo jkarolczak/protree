@@ -1,11 +1,10 @@
 from typing import TypeAlias, Literal
 
-from protree.data.river_generators import Agrawal, SEA, RBF
+from protree.data.river_generators import SEA, RBF, Mixed, Stagger
 from protree.data.stream_generators import Sine, Plane, RandomTree
 
 TNamedStream: TypeAlias = Literal[
-    "sine1", "sine500", "plane100", "plane1000", "random_tree20", "random_tree500", "RBF1", "RBF4000", "agrawal1",
-    "agrawal200", "SEA1", "SEA1000"]
+    "sine1", "sine500", "plane100", "plane1000", "random_tree20", "random_tree500", "rbf1", "sea1", "stagger1", "mixed1"]
 
 
 class INamedStream:
@@ -54,26 +53,16 @@ class Rbf1(RBF, INamedStream):
         super().__init__(drift_position=[47100, 63000, 88800], drift_duration=1, seed=42, n_informative=4, n_centroids=9)
 
 
-class Rbf4000(RBF, INamedStream):
-    def __init__(self):
-        super().__init__(drift_position=[56000, 76000], drift_duration=4000, seed=42, n_informative=4, n_centroids=11)
-
-
-class Agrawal1(Agrawal, INamedStream):
-    def __init__(self):
-        super().__init__(drift_position=[50000, 72200, 89000], drift_duration=1, classification_function=0, seed=42)
-
-
-class Agrawal200(Agrawal, INamedStream):
-    def __init__(self):
-        super().__init__(drift_position=[43000, 62000, 81200], drift_duration=200, seed=42, classification_function=2)
-
-
 class Sea1(SEA, INamedStream):
     def __init__(self):
         super().__init__(drift_position=[43900, 65000, 77500, 90000], drift_duration=1, seed=42)
 
 
-class Sea1000(SEA, INamedStream):
+class Mixed1(Mixed, INamedStream):
     def __init__(self):
-        super().__init__(drift_position=[45200, 79500], drift_duration=1000, seed=42)
+        super().__init__(drift_position=[49900], classification_function=1, drift_duration=1, seed=42)
+
+
+class Stagger1(Stagger, INamedStream):
+    def __init__(self):
+        super().__init__(drift_position=[43500, 69500], classification_function=0, drift_duration=1, seed=42)

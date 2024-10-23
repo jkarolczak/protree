@@ -57,9 +57,8 @@ def run_drift_explanation_sklearn() -> None:
 
 def run_drift_detection() -> None:
     command_base = "python protree/experiment-detect-drift.py --log -t 200 -bs 2000 --kw_args=\"n_prototypes=5\" "
-    # for dataset in ["sine1", "sine500", "plane100", "plane1000", "random_tree20", "random_tree500", "RBF1", "Agrawal1",
-    #                 "Agrawal200", "SEA1", "SEA1000"]:
-    for dataset in ["Agrawal1", "Agrawal200", "SEA1", "SEA1000", "RBF1"]:
+    for dataset in ["sine1", "sine500", "plane100", "plane1000", "random_tree20", "random_tree500", "rbf1", "sea1", "stagger1",
+                    "mixed1"]:
         command = command_base + f"{dataset} G_KM"
         print(command)
         os.system(command)
