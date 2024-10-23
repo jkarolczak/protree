@@ -44,7 +44,7 @@ jobs:
           draft: false
           prerelease: false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_GITHUB }}
 
       - name: Upload to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
