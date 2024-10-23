@@ -1,11 +1,14 @@
+[![PyPI ](https://img.shields.io/pypi/v/Protree)](https://pypi.org/project/protree/)
+![Actions](https://github.com/jkarolczak/protree/actions/workflows/build_wheel.yml/badge.svg)
+
 # Protree
 
-Protree is a Python library containing a set of utilities implemented as a part of master's thesis by
-[Jacek Karolczak](https://github.com/jkarolczak) under the supervision
-of [prof. dr hab. Jerzy Stefanowski](https://scholar.google.pl/citations?user=id96GvIAAAAJ) for prototype selection in
-tree-based models. The implemented tools include dataloaders, measures, prototype selection algorithms, as well as
-scripts allowing to reproduce the experiments conducted in the thesis.
+Protree is a Python library containing a set of utilities for prototype selection for tree-based models. The implemented
+tools include dataloaders, measures, prototype selection algorithms, and drift detection algorithms. The library is
+designed to be used with the scikit-learn and river libraries.
 
+The library was implemented as a part of master's thesis by [Jacek Karolczak](https://github.com/jkarolczak) under the
+supervision of [prof. dr hab. Jerzy Stefanowski](https://scholar.google.pl/citations?user=id96GvIAAAAJ)
 The main contribution of the thesis is the introduction of the measures to assess and compare prototypes, and the A-PETE
 and ANCIENT algorithms.
 
@@ -21,7 +24,7 @@ The need for interpreting machine learning models is addressed through prototype
 ensembles. An algorithm named Adaptive Prototype Explanations of Tree Ensembles (A-PETE) is proposed to automatise the
 selection of prototypes for these classifiers. Its unique characteristics is using a specialised distance measure and a
 modified k-medoid approach. Experiments demonstrated its competitive predictive accuracy with respect to earlier
-explanation algorithms. It also provides a a sufficient number of prototypes for the purpose of interpreting the random
+explanation algorithms. It also provides a sufficient number of prototypes for the purpose of interpreting the random
 forest classifier.
 
 ### How to use?
@@ -55,6 +58,20 @@ Output:
   2:
          sepal length (cm)  sepal width (cm)  petal length (cm)  petal width (cm)
     104                6.5               3.0                5.8               2.2
+}
+```
+
+### Using A-PETE? Cite us!
+
+```bibtex
+@article{karolczak2024apete,
+  title={A-PETE: Adaptive Prototype Explanations of Tree Ensembles},
+  author={Karolczak, Jacek and Stefanowski, Jerzy},
+  journal={Progress in Polish Artificial Intelligence Research},
+  volume={5},
+  pages={2--8},
+  year={2024},
+  publisher={Warsaw University of Technology WUT Press}
 }
 ```
 
@@ -98,21 +115,21 @@ Output:
 
 ## Experiments reproduction
 
-The experiments conducted in the thesis can be reproduced using the scripts provided in the `protree` directory,
+The experiments conducted in the thesis can be reproduced using the scripts provided in the `scripts` directory,
 specifically:
 
-- `protree/experiment-static.py` - allows to reproduce the experiments on static datasets, especially A-PETE
+- `scripts/experiment-static.py` - allows to reproduce the experiments on static datasets, especially A-PETE
   effectiveness described in Chapter 3, as well as computing the measures described in Chapter 4,
-- `protree/experiment-steam-sklearn.py` - enables reproducing the experiments on the stream datasets proving the
+- `scripts/experiment-steam-sklearn.py` - enables reproducing the experiments on the stream datasets proving the
   proposed measures' effectiveness in explaining drifts described in Chapter 5.2,
-- `protree/experiment-detect-drift.py` - makes it possible to reproduce the experiments on the stream datasets proving
+- `scripts/experiment-detect-drift.py` - makes it possible to reproduce the experiments on the stream datasets proving
   the ANCIENT algorithm's effectiveness in detecting drifts described in Chapter 5.3.
 
 Usage of the scripts is described in the help message, which can be displayed by running the script with the `--help`
 flag, for instance:
 
 ```shell
-python protree/experiment-static.py --help
+python scripts/experiment-static.py --help
 ```
 
 Output:
@@ -138,7 +155,7 @@ Options:
 For instance:
 
 ```shell
-python protree/experiment-static.py diabetes APete -p sqrt
+python scripts/experiment-static.py diabetes APete -p sqrt
 ```
 
 Output:
