@@ -1,11 +1,6 @@
 click
-imbalanced-learn
-matplotlib
 numpy
 pandas
-python-mnist
 river
 scikit-learn
 scipy
-torch
-torchvision
