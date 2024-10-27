@@ -4,7 +4,7 @@ import click
 
 
 def run_static_explanation() -> None:
-    command_base = "python protree/experiment-static.py --log -t 1000 -d ./data "
+    command_base = "python scripts/experiment-static.py --log -t 1000 -d ./data "
 
     for dataset, p, alg, kw in [
         ("breast_cancer", 0.33, "SM_A", "n_prototypes=18"),
@@ -44,19 +44,19 @@ def run_static_explanation() -> None:
 
 
 def run_drift_explanation_sklearn() -> None:
-    command_base = "python protree/experiment-stream-sklearn.py --log -t 300 -dw 1 "
-    for dataset in ["sine", "random_tree", "make_classification", "plane"]:
+    command_base = "python scripts/experiment-stream-sklearn.py --log -t 300 -dw 1 -n 20"
+    for dataset in ["sine", "random_tree", "rbf", "plane"]:
         for alg, kw in [
             *[("APete", f"alpha={n}") for n in (0.05,)],
         ]:
-            for bs in [250, 2500, 10000, 25000]:
+            for bs in [100, 1000, 10000, 25000]:
                 command = command_base + f" -bs {bs} -kw {kw} {dataset} {alg}"
                 print(command)
                 os.system(command)
 
 
 def run_drift_detection() -> None:
-    command_base = "python protree/experiment-detect-drift.py --log -t 200 -bs 2000 --kw_args=\"n_prototypes=5\" "
+    command_base = "python scripts/experiment-detect-drift.py --log -t 200 -bs 2000 --kw_args=\"n_prototypes=5\" "
     for dataset in ["sine1", "sine500", "plane100", "plane1000", "random_tree20", "random_tree500", "rbf1", "sea1", "stagger1",
                     "mixed1"]:
         command = command_base + f"{dataset} G_KM"
@@ -66,7 +66,7 @@ def run_drift_detection() -> None:
 
 @click.command()
 @click.argument("experiment",
-                type=click.Choice(["static-explanation", "drift-explanation-sklearn", "drift-explanation", "drift-detection"]))
+                type=click.Choice(["static-explanation", "drift-explanation-sklearn", "drift-detection"]))
 def main(experiment: str) -> None:
     match experiment:
         case "static-explanation":
