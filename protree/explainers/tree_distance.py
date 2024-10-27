@@ -98,21 +98,18 @@ class IExplainer(ABC):
         return distances
 
     def predict_with_prototypes(self, x: TDataBatch, prototypes: TPrototypes) -> np.ndarray:
-        prototypes = parse_prototypes(prototypes)
-        x = parse_input(x)
-
-        predictions = np.full((len(x), 1), -1, dtype=_type_to_np_dtype(prototypes))
-        similarity = np.zeros(len(x))
+        predictions = (np.ones((len(x), 1)) * (-1)).astype(_type_to_np_dtype(prototypes))
+        similarity = np.zeros((len(x)))
         x_nodes = self.model.get_leave_indices(x)
 
-        for cls, proto_data in prototypes.items():
-            proto_nodes = self.model.get_leave_indices(
-                proto_data if isinstance(proto_data, pd.DataFrame) else list(proto_data))
-            proto_similarity = np.dot(proto_nodes, x_nodes.T) / self.model.n_trees
-            mask = proto_similarity > similarity
-            predictions[mask] = cls
-            similarity[mask] = proto_similarity[mask]
-
+        for cls in prototypes:
+            for _, prototype in (
+                    prototypes[cls].iterrows() if hasattr(prototypes[cls], "iterrows") else enumerate(prototypes[cls])):
+                prototype_leaves = self.model.get_leave_indices([prototype])
+                prototype_similarity = (prototype_leaves == x_nodes).sum(axis=1) / self.model.n_trees
+                mask = prototype_similarity > similarity
+                predictions[mask] = cls
+                similarity[mask] = prototype_similarity[mask]
         return predictions
 
     def get_prototype_assignment(self, x: TDataBatch, prototypes: TPrototypes) -> np.ndarray:
@@ -327,6 +324,6 @@ class APete(SM_A):
             for cls in classes:
                 protos[cls] = iloc(get_x_belonging_to_cls(x, y, cls), prototypes[cls])
 
-            if np.abs(prev_improvement - improvement) / improvement <= self.alpha:
+            if improvement == 0 or np.abs(prev_improvement - improvement) / improvement <= self.alpha:
                 return protos
             prev_improvement = improvement
