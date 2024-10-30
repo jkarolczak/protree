@@ -24,8 +24,10 @@ from protree.meta import RANDOM_SEED
               default="swap_delta", help="The measure to use for prototype selection.")
 @click.option("--strategy", "-s", type=click.Choice(["class", "total"]), default="total",
               help="The strategy to use for prototype selection.")
+@click.option("--distance", "-d", type=click.Choice(["tree", "l2"]), default="tree",
+              help="Distance to use we.")
 @click.option("--log", is_flag=True, help="A flag indicating whether to log the results to wandb.")
-def main(dataset: TNamedStream, explainer, n_trees: int, kw_args: str, block_size: int,
+def main(dataset: TNamedStream, explainer, n_trees: int, kw_args: str, block_size: int, distance: Literal["tree", "l2"],
          measure: Literal["mutual_information", "centroid_displacement", "minimal_distance"],
          strategy: Literal["class", "total"], log: bool) -> None:
     kw_args_dict = dict([arg.split("=") for arg in (kw_args.split(",") if kw_args else [])])
@@ -44,9 +46,10 @@ def main(dataset: TNamedStream, explainer, n_trees: int, kw_args: str, block_siz
                 "explainer": explainer,
                 "dataset": dataset,
                 "n_estimators": n_trees,
-                "drift_position": ds.drift_position,
-                "drift_width": ds.drift_duration,
+                "drift_duration": ds.drift_duration,
                 "block_size": block_size,
+                "distance": distance,
+                "strategy": strategy,
                 "measure": measure,
                 **kw_args_dict
             }
@@ -69,16 +72,17 @@ def main(dataset: TNamedStream, explainer, n_trees: int, kw_args: str, block_siz
         gc.collect()
 
     false_alarms = sum(
-        [not any([(d_hat - 1.5 * block_size) <= dp <= (d_hat + 1.5 * block_size) for dp in ds.drift_position]) for d_hat in
-         drift_predictions])
+        [not any(
+            [(d_hat - 1.5 * block_size) <= dp <= (d_hat + ds.drift_duration + 1.5 * block_size) for dp in ds.drift_position])
+         for d_hat in drift_predictions])
 
     missed_drifts = sum(
-        [not any([(d_hat - 1.5 * block_size) <= dp <= (d_hat + 1.5 * block_size) for d_hat in drift_predictions]) for dp in
-         ds.drift_position])
+        [not any([(d_hat - 1.5 * block_size) <= dp <= (d_hat + ds.drift_duration + 1.5 * block_size) for d_hat in
+                  drift_predictions]) for dp in ds.drift_position])
 
     correctly_detected_drifts = sum(
-        [any([(d_hat - 1.5 * block_size) <= dp <= (d_hat + 1.5 * block_size) for d_hat in drift_predictions]) for dp in
-         ds.drift_position])
+        [any([(d_hat - 1.5 * block_size) <= dp <= (d_hat + ds.drift_duration + 1.5 * block_size) for d_hat in
+              drift_predictions]) for dp in ds.drift_position])
 
     print("Correctly detected drifts:", correctly_detected_drifts)
     print("False alarms:", false_alarms)

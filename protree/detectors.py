@@ -58,7 +58,6 @@ class ProtoBDrift(DriftDetector):
         self._find_prototypes()
         if self._iter_counter >= 1:
             metric = self._compute_metric()
-
             if (self.cold_start / 2) <= self._iter_counter < self.cold_start:
                 self._update_metric_stats(metric)
             elif self.cold_start <= self._iter_counter:

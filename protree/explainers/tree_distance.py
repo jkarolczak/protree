@@ -84,7 +84,13 @@ class IExplainer(ABC):
 
     def similarity_matrix(self, batch: TDataBatch) -> np.ndarray:
         nodes = self.model.get_leave_indices(batch)
-        return np.dot(nodes, nodes.T) / self.model.n_trees
+
+        shape = len(batch)
+        matrix = np.zeros((shape, shape), dtype=float)
+        for i in range(shape):
+            matrix[i] = (nodes[i] == nodes).sum(axis=1)
+        matrix /= self.model.n_trees
+        return matrix
 
     def distance_matrix(self, batch: TDataBatch) -> np.ndarray:
         return 1 - self.similarity_matrix(batch)

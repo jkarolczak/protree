@@ -250,7 +250,7 @@ def centroids_displacements(a: TPrototypes, b: TPrototypes, penalty: float = 10.
             distances[cls] = 0.0
 
         # one empty
-        elif len(a[cls]) == 0 or len(b[cls]) == 0:
+        elif cls not in a or len(a[cls]) == 0 or cls not in b or len(b[cls]) == 0:
             distances[cls] = penalty
 
         # both not empty

@@ -56,12 +56,13 @@ def run_drift_explanation_sklearn() -> None:
 
 
 def run_drift_detection() -> None:
-    command_base = "python scripts/experiment-detect-drift.py --log -t 200 -bs 2000 --kw_args=\"n_prototypes=5\" "
-    for dataset in ["sine1", "sine500", "plane100", "plane1000", "random_tree20", "random_tree500", "rbf1", "sea1", "stagger1",
-                    "mixed1"]:
-        command = command_base + f"{dataset} G_KM"
-        print(command)
-        os.system(command)
+    command_base = "python scripts/experiment-detect-drift.py --log -t 200 -bs 1000 --kw_args=\"n_prototypes=5\" -d l2 "
+    for measure in ["minimal_distance", "centroid_displacement", "swap_delta"]:
+        for dataset in ["sine1", "sine500", "plane100", "plane1000", "random_tree20", "random_tree500", "rbf1", "sea1",
+                        "stagger1", "mixed1"]:
+            command = command_base + f"-m {measure} {dataset} G_KM"
+            print(command)
+            os.system(command)
 
 
 @click.command()
