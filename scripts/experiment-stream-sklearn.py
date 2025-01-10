@@ -14,20 +14,22 @@ from protree.data.stream_generators import TStreamGenerator, StreamGeneratorFact
 from protree.explainers import TExplainer, Explainer
 from protree.explainers.tree_distance import IExplainer
 from protree.metrics.compare import mutual_information, mean_minimal_distance, mean_centroid_displacement, rand_index, \
-    centroids_displacements, classwise_mean_minimal_distance, swap_delta, completeness, fowlkes_mallows
+    centroids_displacements, classwise_mean_minimal_distance, prototype_reassignment_impact, completeness, fowlkes_mallows
 from protree.utils import pprint_dict
 
 
 def compute_mean_std(data: dict) -> dict:
     def mean_std_for_dicts(list_of_dicts: list[dict]) -> dict:
         """Helper function to compute mean and std for dictionaries."""
-        keys = list_of_dicts[0].keys()
+        keys = set()
+        for d in list_of_dicts:
+            keys.update(d.keys())
         result = {}
         for key in keys:
-            values = [d[key] for d in list_of_dicts]
+            values = [d[key] for d in list_of_dicts if key in d]
             result[key] = {
-                "mean": np.mean(values),
-                "std": np.std(values)
+                "mean": np.nanmean(values),
+                "std": np.nanstd(values)
             }
         return result
 
@@ -57,8 +59,8 @@ def create_comparison_dict(a: TPrototypes, b: TPrototypes, x: TDataBatch, y: TTa
         "classwise_mean_minimal_distance": classwise_mean_minimal_distance(a, b),
         "mean_centroid_displacement": mean_centroid_displacement(a, b),
         "centroids_displacements": centroids_displacements(a, b),
-        "swap_delta (l2)": swap_delta(a, b, x, y),
-        "swap_delta (tree distance)": swap_delta(a, b, x, y, explainer=explainer_b),
+        "swap_delta (l2)": prototype_reassignment_impact(a, b, x, y),
+        "swap_delta (tree distance)": prototype_reassignment_impact(a, b, x, y, explainer=explainer_b),
     }
 
     for metric in [mutual_information, rand_index, completeness, fowlkes_mallows]:

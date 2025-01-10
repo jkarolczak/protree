@@ -8,7 +8,7 @@ from river.datasets import synth
 from protree.data.stream_generators import IStreamGenerator
 
 
-class SEA(IStreamGenerator):
+class Sea(IStreamGenerator):
     """SEA synthetic dataset, based on the River library implementation:
     https://riverml.xyz/latest/api/datasets/synth/SEA/
 
@@ -56,17 +56,16 @@ class SEA(IStreamGenerator):
         return result
 
 
-class RBF(IStreamGenerator):
+class Rbf(IStreamGenerator):
     def __init__(self, drift_position: int | list[int] = 500, drift_duration: int = 1, seed: int = 42,
                  n_informative: int = 5, n_centroids: int = 11) -> None:
         super().__init__(drift_position, drift_duration, seed)
         self._data_stream = synth.RandomRBF(seed_model=seed, seed_sample=seed, n_features=n_informative,
-                                            n_centroids=n_centroids).__iter__()
+                                            n_centroids=n_centroids, n_classes=3).__iter__()
         self._flip = False
 
     def _permute_y(self, y: int) -> int:
-        map_ = {0: 2, 1: 3, 2: 0, 3: 1}
-        return map_[y]
+        return (y + 1) % 3
 
     def take(self, n: int) -> list[tuple[dict[str, float], int]]:
         result = []

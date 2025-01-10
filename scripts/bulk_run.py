@@ -45,7 +45,7 @@ def run_static_explanation() -> None:
 
 def run_drift_explanation_sklearn() -> None:
     command_base = "python scripts/experiment-stream-sklearn.py --log -t 300 -dw 1 -n 20"
-    for dataset in ["sine", "random_tree", "rbf", "plane"]:
+    for dataset in ["rbf", "sea", "mixed", "stagger"]:
         for alg, kw in [
             *[("APete", f"alpha={n}") for n in (0.05,)],
         ]:
@@ -56,12 +56,13 @@ def run_drift_explanation_sklearn() -> None:
 
 
 def run_drift_detection() -> None:
-    command_base = "python scripts/experiment-detect-drift.py --log -t 200 -bs 2000 --kw_args=\"n_prototypes=5\" "
-    for dataset in ["sine1", "sine500", "plane100", "plane1000", "random_tree20", "random_tree500", "rbf1", "sea1", "stagger1",
-                    "mixed1"]:
-        command = command_base + f"{dataset} G_KM"
-        print(command)
-        os.system(command)
+    command_base = "python scripts/experiment-detect-drift.py --log -t 200 -bs 3000 --kw_args=\"alpha=0.05\" -d l2 "
+    # for measure in ["minimal_distance", "centroid_displacement", "swap_delta"]:
+    for measure in ["swap_delta"]:
+        for dataset in ["sine1", "sine500", "random_tree20", "random_tree500", "mixed1", "sea1", "stagger1"]:
+            command = command_base + f"-m {measure} {dataset} APete"
+            print(command)
+            os.system(command)
 
 
 @click.command()
