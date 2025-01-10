@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Type, Literal, Callable
 
+import numpy as np
 from river.base import DriftDetector
 from river.forest import ARFClassifier
 from sklearn.ensemble import RandomForestClassifier
@@ -11,10 +12,8 @@ from protree import TPrototypes, TDataBatch, TTarget
 from protree.explainers import TExplainer, APete
 
 
-class ProtoBDrift(DriftDetector):
-    """Prototypes-based drift detector for block data streams.
-
-    """
+class RaceP(DriftDetector):
+    """RACE-P: Real-time Analysis of Concept Evolution with Prototypes"""
 
     def __init__(self, model: RandomForestClassifier | ARFClassifier, prototype_selector: Type[TExplainer] = APete,
                  prototype_selector_kwargs: dict | None = None,
@@ -22,10 +21,10 @@ class ProtoBDrift(DriftDetector):
                      "mutual_information", "rand_index", "completeness", "fowlkes_mallows", "centroid_displacement",
                      "minimal_distance"] = "centroid_displacement", strategy: Literal["class", "total"] = "total",
                  distance: Literal["l2", "tree"] = "l2", assign_to: Literal["class", "prototype"] = "prototype",
-                 cold_start: int = 20, const: float = 0.33) -> None:
+                 grace_period: int = 20, const: float = 3.0) -> None:
         super().__init__()
         self.assign_to = assign_to
-        self.cold_start = cold_start
+        self.grace_period = grace_period
         self.const = const
         self.distance = distance
         self.measure = measure
@@ -34,12 +33,9 @@ class ProtoBDrift(DriftDetector):
         self.prototype_selector_kwargs = prototype_selector_kwargs or {}
         self.strategy = strategy
 
-        self._metric_significance_max: int | dict[int | str, float] | None = None
-        self._metric_significance_min: int | dict[int | str, float] | None = None
-
-        self._direction: str | None = None
         self._iter_counter: int = 0
         self._drift_detected: bool = False
+        self._direction: str | None = None
 
         self._init_state()
 
@@ -47,8 +43,11 @@ class ProtoBDrift(DriftDetector):
         self.x_blocks: tuple[TDataBatch, TDataBatch] = (None, None)
         self.y_blocks: tuple[TTarget, TTarget] = (None, None)
 
-        self.explainers: tuple[TExplainer | None, TExplainer | None] = (None, None)
+        self._reference_window: list[float] | list[dict[int | str, float]] = []
+        self._reference_mean: float | dict[int | str, float] | None = None
+        self._reference_std: float | dict[int | str, float] | None = None
 
+        self.explainers: tuple[TExplainer | None, TExplainer | None] = (None, None)
         self.prototypes: tuple[TPrototypes, TPrototypes] = ({}, {})
 
     def update(self, x: TDataBatch, y: TTarget) -> None:
@@ -58,9 +57,9 @@ class ProtoBDrift(DriftDetector):
         self._find_prototypes()
         if self._iter_counter >= 1:
             metric = self._compute_metric()
-            if (self.cold_start / 2) <= self._iter_counter < self.cold_start:
+            if (self.grace_period // 2) <= self._iter_counter < self.grace_period:
                 self._update_metric_stats(metric)
-            elif self.cold_start <= self._iter_counter:
+            elif self.grace_period <= self._iter_counter:
                 self._test(metric)
         self._iter_counter += 1
 
@@ -81,25 +80,15 @@ class ProtoBDrift(DriftDetector):
         )
 
     def _update_metric_stats(self, metric: float | dict[str | int, float]) -> None:
-        if self._metric_significance_min is None:
+        self._reference_window.append(metric)
+
+        if self._iter_counter == self.grace_period - 1:
             if isinstance(metric, float):
-                self._metric_significance_min = metric
-                self._metric_significance_max = metric
+                self._reference_mean = np.mean(self._reference_window)
+                self._reference_std = np.std(self._reference_window)
             elif isinstance(metric, dict):
-                self._metric_significance_min = {}
-                self._metric_significance_max = {}
-                for key in metric:
-                    self._metric_significance_min[key] = metric
-                    self._metric_significance_max[key] = metric
-
-        elif isinstance(self._metric_significance_min, float):
-            self._metric_significance_min = min(self._metric_significance_min, metric)
-            self._metric_significance_max = max(self._metric_significance_max, metric)
-
-        elif isinstance(self._metric_significance_min, dict):
-            for key in metric:
-                self._metric_significance_min[key] = min(self._metric_significance_min[key], metric[key])
-                self._metric_significance_max[key] = max(self._metric_significance_max[key], metric[key])
+                self._reference_mean = {key: np.mean([m[key] for m in self._reference_window]) for key in metric}
+                self._reference_std = {key: np.std([m[key] for m in self._reference_window]) for key in metric}
 
     def _reset(self):
         super()._reset()
@@ -107,18 +96,15 @@ class ProtoBDrift(DriftDetector):
 
     def _test_value(self, value: float, key: int | str | None = None) -> bool:
         if key is not None:
-            interval = self._metric_significance_max[key] - self._metric_significance_min[key]
             if self._direction == "increase":
-                return value > self._metric_significance_max[key] + self.const * interval
+                return value > (self._reference_mean[key] + self.const * self._reference_std[key])
             else:
-                return value < self._metric_significance_min[key] - self.const * interval
-
-        interval = self._metric_significance_max - self._metric_significance_min
+                return value < (self._reference_mean[key] - self.const * self._reference_std[key])
 
         if self._direction == "increase":
-            return value > self._metric_significance_max + self.const * interval
+            return value > (self._reference_mean + self.const * self._reference_std)
         else:
-            return value < self._metric_significance_min - self.const * interval
+            return value < (self._reference_mean - self.const * self._reference_std)
 
     def _test(self, metric: float | dict[int | str, float]) -> None:
         # strategy: class
@@ -142,13 +128,14 @@ class ProtoBDrift(DriftDetector):
             metric = getattr(protree.metrics.compare, self.measure)
             return self._compute_cluster_metric(metric)
 
-        elif self.measure == "swap_delta":
-            from protree.metrics.compare import swap_delta
+        elif self.measure == "prototype_reassignment_impact":
+            from protree.metrics.compare import prototype_reassignment_impact
 
             self._direction = "increase"
             if self.distance == "tree":
-                return swap_delta(*self.prototypes, self.x_blocks[1], self.y_blocks[1], explainer=self.explainers[1])
-            return swap_delta(*self.prototypes, self.x_blocks[1], self.y_blocks[1])
+                return prototype_reassignment_impact(*self.prototypes, self.x_blocks[1], self.y_blocks[1],
+                                                     explainer=self.explainers[1])
+            return prototype_reassignment_impact(*self.prototypes, self.x_blocks[1], self.y_blocks[1])
 
         elif self.measure == "minimal_distance":
             self._direction = "increase"

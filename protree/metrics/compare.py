@@ -2,6 +2,7 @@ from typing import Literal
 
 import numpy as np
 import pandas as pd
+from icecream import ic
 
 from protree import TDataBatch, TPrototypes, TTarget
 from protree.explainers.tree_distance import IExplainer
@@ -338,14 +339,15 @@ def classwise_mean_minimal_distance(a: TPrototypes, b: TPrototypes, penalty: flo
 
     classes = set(a.keys()).union(b.keys())
     distances = {}
+
     for cls in classes:
         # both empty
         if (cls not in a or len(a[cls]) == 0) and (cls not in b or len(b[cls]) == 0):
             distances[cls] = 0.0
 
         # one empty
-        elif (cls not in b or len(a[cls]) == 0) or (cls not in b or len(b[cls]) == 0):
-            distances[cls] = penalty * len(b[cls] if cls in b and b[cls] else a[cls])
+        elif cls not in a or len(a[cls]) == 0 or cls not in b or len(b[cls]) == 0:
+            distances[cls] = penalty * len(b[cls] if cls in b and len(b[cls]) > 0 else a[cls])
 
         # both not empty
         else:
@@ -384,28 +386,30 @@ def _one_way_swap_delta(prototypes_a: TPrototypes, prototypes_b: TPrototypes, x:
     prototypes_b = parse_prototypes(prototypes_b)
 
     accuracy_changes = []
-
     for cls, prototypes in prototypes_a.items():
-        if len(prototypes) == 0:
-            continue
+        try:
+            if len(prototypes) == 0:
+                continue
 
-        for idx, prototype in prototypes.iterrows():
-            temp_prototypes = prototypes_b.copy()
-            if cls not in temp_prototypes:
-                temp_prototypes[cls] = pd.DataFrame()
-            temp_prototypes[cls] = pd.concat([temp_prototypes[cls], prototype.to_frame().T]).reset_index(drop=True)
+            for idx, prototype in prototypes.iterrows():
+                temp_prototypes = prototypes_b.copy()
+                if cls not in temp_prototypes:
+                    temp_prototypes[cls] = pd.DataFrame()
+                temp_prototypes[cls] = pd.concat([temp_prototypes[cls], prototype.to_frame().T]).reset_index(drop=True)
 
-            new_accuracy = _get_accuracy(temp_prototypes, x, y, explainer)
-            accuracy_changes.append(np.abs(baseline_accuracy - new_accuracy))
-
+                new_accuracy = _get_accuracy(temp_prototypes, x, y, explainer)
+                accuracy_changes.append(np.abs(baseline_accuracy - new_accuracy))
+        except Exception as e:
+            ic(prototypes)
+            raise e
     if accuracy_changes:
         return np.mean(accuracy_changes)
     else:
         return 0.0
 
 
-def swap_delta(prototypes_a: TPrototypes, prototypes_b: TPrototypes, x: TDataBatch, y: TTarget,
-               explainer: IExplainer | None = None) -> float:
+def prototype_reassignment_impact(prototypes_a: TPrototypes, prototypes_b: TPrototypes, x: TDataBatch, y: TTarget,
+                                  explainer: IExplainer | None = None) -> float:
     """
     Calculate a distance metric between two sets of prototypes by measuring the change in accuracy when prototypes from
     one set are temporarily added to the other set. This metrics is symmetric as it calculates changes in accuracy in both

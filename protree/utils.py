@@ -64,9 +64,10 @@ def parse_batch(batch: TDataBatch) -> pd.DataFrame:
 
 
 def parse_prototypes(prototypes: TPrototypes) -> dict[int | str, pd.DataFrame]:
-    if isinstance(list(prototypes.values())[0], pd.DataFrame):
-        return prototypes
-    return {cls: pd.DataFrame.from_records(prototypes[cls]) for cls in prototypes}
+    output = {}
+    for cls in prototypes:
+        output[cls] = parse_batch(prototypes[cls])
+    return output
 
 
 def get_re_idx(prototypes: TPrototypes, cls: str | int, idx: int, in_class_only: bool = False) -> int:

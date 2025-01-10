@@ -6,7 +6,7 @@ import wandb
 from river import forest
 
 from protree.data.named_stream import TNamedStream, NamedStreamGeneratorFactory
-from protree.detectors import ProtoBDrift
+from protree.detectors import RaceP
 from protree.explainers import Explainer
 from protree.meta import RANDOM_SEED
 
@@ -17,10 +17,10 @@ from protree.meta import RANDOM_SEED
 @click.option("--n_trees", "-t", default=100, help="Number of trees. Allowable values are positive ints.")
 @click.option("--kw_args", "-kw", type=str, default="",
               help="Additional, keyword arguments for the explainer. Must be in the form of key=value,key2=value2...")
-@click.option("--block_size", "-bs", type=int, default=2000, help="The size of the block.")
+@click.option("--block_size", "-bs", type=int, default=1000, help="The size of the block.")
 @click.option("--measure", "-m", type=click.Choice(["mutual_information", "rand_index", "completeness",
                                                     "fowlkes_mallows", "centroid_displacement", "minimal_distance",
-                                                    "swap_delta"]),
+                                                    "prototype_reassignment_impact"]),
               default="swap_delta", help="The measure to use for prototype selection.")
 @click.option("--strategy", "-s", type=click.Choice(["class", "total"]), default="total",
               help="The strategy to use for prototype selection.")
@@ -33,8 +33,8 @@ def main(dataset: TNamedStream, explainer, n_trees: int, kw_args: str, block_siz
     kw_args_dict = dict([arg.split("=") for arg in (kw_args.split(",") if kw_args else [])])
     ds = NamedStreamGeneratorFactory.create(name=dataset)
     model = forest.ARFClassifier(seed=RANDOM_SEED, n_models=n_trees, leaf_prediction="nba", grace_period=20, delta=0.1)
-    detector = ProtoBDrift(model=model, prototype_selector=Explainer[explainer].value, prototype_selector_kwargs=kw_args_dict,
-                           measure=measure, strategy=strategy)
+    detector = RaceP(model=model, prototype_selector=Explainer[explainer].value, prototype_selector_kwargs=kw_args_dict,
+                     measure=measure, strategy=strategy)
 
     if log:
         wandb.init(
@@ -42,7 +42,7 @@ def main(dataset: TNamedStream, explainer, n_trees: int, kw_args: str, block_siz
             entity="jacek-karolczak",
             name=f"{explainer}-{dataset}-{kw_args}-drift-{measure}",
             config={
-                "experiment-type": "stream-detect-drift",
+                "experiment-type": "stream-detect-drift-multi",
                 "explainer": explainer,
                 "dataset": dataset,
                 "n_estimators": n_trees,

@@ -9,7 +9,7 @@ from sklearn.tree import DecisionTreeClassifier
 from protree import TDataBatch, TTarget
 from protree.meta import RANDOM_SEED
 
-TStreamGenerator: TypeAlias = Literal["sine", "plane", "random_tree", "rbf"]
+TStreamGenerator: TypeAlias = Literal["sine", "plane", "random_tree", "rbf", "mixed", "sea", "stagger"]
 
 
 class StreamGeneratorFactory:
@@ -17,7 +17,12 @@ class StreamGeneratorFactory:
     def create(name: TStreamGenerator, drift_position: int | list[int] = 500, drift_duration: int = 5, seed: int = RANDOM_SEED
                ) -> IStreamGenerator:
         name = ''.join([n.capitalize() for n in name.split('_')])
-        return globals()[f"{name}"](drift_position=drift_position, drift_duration=drift_duration, seed=seed)
+        if name in globals():
+            return globals()[f"{name}"](drift_position=drift_position, drift_duration=drift_duration, seed=seed)
+        else:
+            import protree.data.river_generators as river_generators
+
+            return getattr(river_generators, name)(drift_position=drift_position, drift_duration=drift_duration, seed=seed)
 
 
 class IStreamGenerator(ABC):
