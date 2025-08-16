@@ -9,8 +9,59 @@ designed to be used with the scikit-learn and river libraries.
 
 The library was implemented as a part of master's thesis by [Jacek Karolczak](https://github.com/jkarolczak) under the
 supervision of [prof. dr hab. Jerzy Stefanowski](https://scholar.google.pl/citations?user=id96GvIAAAAJ)
-The main contribution of the thesis is the introduction of the measures to assess and compare prototypes, and the A-PETE
-and ANCIENT algorithms.
+Till now, main contributions are measures to assess and compare prototypes, and the A-PETE and RACE-P algorithms.
+
+## RACE-P: Real-time Analysis of Concept Evolution with Prototypes
+
+RACE-P is proposed to detect drift and also explain the nature of the drift using prototypes. The algorithm leverages
+the principle that the measures describing data sub-populations from different distributions are more dissimilar than
+those from the same distribution.
+
+### How to use?
+
+```py
+from river import forest
+
+from protree.data.stream_generators import Plane
+from protree.explainers import APete
+from protree.detectors import Ancient
+
+window_size = 300
+
+model = forest.ARFClassifier()
+detector = Ancient(model=model, prototype_selector=APete, window_length=window_size, alpha=0.55,
+                   measure="minimal_distance", strategy="total", clock=16)
+ds = Plane(drift_position=[1150, 1800, 2500])
+
+for i, (x, y) in enumerate(ds):
+    model.learn_one(x, y)
+    detector.update(x, y)
+    if detector.drift_detected:
+        print(f"{int(i - window_size / 2)}) Drift detected!")
+```
+
+Output:
+
+```
+1175) Drift detected!
+1687) Drift detected!
+1751) Drift detected!
+2583) Drift detected!
+```
+
+### Using RACE-P? Cite us!
+
+```bibtex
+  @article{karolczak2026,
+  title = {Explaining data changes with prototypes: A measure-driven approach},
+  journal = {Information Fusion},
+  volume = {126},
+  pages = {103602},
+  year = {2026},
+  issn = {1566-2535},
+  doi = {10.1016/j.inffus.2025.103602}
+}
+```
 
 ## A-PETE: Adaptive Prototype Explanations of Tree Ensembles
 
@@ -73,44 +124,6 @@ Output:
   year={2024},
   publisher={Warsaw University of Technology WUT Press}
 }
-```
-
-## ANCIENT: Algorithm for New Concept Identification and Explanation in Tree-based models
-
-ANCIENT is proposed to detect drift and also explain the nature of the drift using prototypes. The algorithm leverages
-the principle that the measures describing data sub-populations from different distributions are more dissimilar than
-those from the same distribution.
-
-### How to use?
-
-```py
-from river import forest
-
-from protree.data.stream_generators import Plane
-from protree.explainers import APete
-from protree.detectors import Ancient
-
-window_size = 300
-
-model = forest.ARFClassifier()
-detector = Ancient(model=model, prototype_selector=APete, window_length=window_size, alpha=0.55,
-                   measure="minimal_distance", strategy="total", clock=16)
-ds = Plane(drift_position=[1150, 1800, 2500])
-
-for i, (x, y) in enumerate(ds):
-    model.learn_one(x, y)
-    detector.update(x, y)
-    if detector.drift_detected:
-        print(f"{int(i - window_size / 2)}) Drift detected!")
-```
-
-Output:
-
-```
-1175) Drift detected!
-1687) Drift detected!
-1751) Drift detected!
-2583) Drift detected!
 ```
 
 ## Experiments reproduction
