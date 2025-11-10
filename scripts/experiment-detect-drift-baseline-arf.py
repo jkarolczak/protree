@@ -1,28 +1,24 @@
-import gc
-
 import arff
 import click
 import pandas as pd
 from river import metrics
 from river.forest import ARFClassifier
 
-from protree.data.named_stream import TNamedStream, NamedStreamGeneratorFactory
+from protree.data.named_stream import TNamedStream
+from protree.data.real_stream import TRealStream, RealStreamGeneratorFactory
 from protree.meta import RANDOM_SEED
 
 
 @click.command()
-@click.argument("dataset", type=click.Choice(TNamedStream.__args__))
+@click.argument("dataset", type=click.Choice(TRealStream.__args__))
 @click.option("--n_trees", "-t", default=200, help="Number of trees. Allowable values are positive ints.")
 def main(dataset: TNamedStream, n_trees: int) -> None:
-    ds = NamedStreamGeneratorFactory.create(name=dataset)
+    ds = RealStreamGeneratorFactory.create(name=dataset)
     model = ARFClassifier(seed=RANDOM_SEED, n_models=n_trees, leaf_prediction="nba", grace_period=20, delta=0.1)
     accuracy_metric = metrics.Accuracy()
     csv_data = []
 
-    for stream_position in range(100000):
-        if stream_position % 1000 == 0:
-            gc.collect()
-            print(f"Stream position: {stream_position}")
+    for stream_position in range(len(ds)):
         x, y = ds.take(1)[0]
         y_pred = model.predict_one(x)
         model.learn_one(x, y)
