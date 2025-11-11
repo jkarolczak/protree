@@ -21,7 +21,7 @@ from protree.meta import RANDOM_SEED
 @click.option("--measure", "-m", type=click.Choice(["mutual_information", "rand_index", "completeness",
                                                     "fowlkes_mallows", "centroid_displacement", "minimal_distance",
                                                     "prototype_reassignment_impact"]),
-              default="swap_delta", help="The measure to use for prototype selection.")
+              default="prototype_reassignment_impact", help="The measure to use for prototype selection.")
 @click.option("--strategy", "-s", type=click.Choice(["class", "total"]), default="total",
               help="The strategy to use for prototype selection.")
 @click.option("--distance", "-d", type=click.Choice(["tree", "l2"]), default="tree",
@@ -56,7 +56,6 @@ def main(dataset: TNamedStream, explainer, n_trees: int, kw_args: str, block_siz
         )
 
     drift_predictions = []
-
     i = 0
 
     while i * block_size < 100000:
