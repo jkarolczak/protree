@@ -22,44 +22,47 @@ those from the same distribution.
 ```py
 from river import forest
 
-from protree.data.stream_generators import Plane
+from protree.data.stream_generators import Sine
+from protree.detectors import RaceP
 from protree.explainers import APete
-from protree.detectors import Ancient
-
-window_size = 300
 
 model = forest.ARFClassifier()
-detector = Ancient(model=model, prototype_selector=APete, window_length=window_size, alpha=0.55,
-                   measure="minimal_distance", strategy="total", clock=16)
-ds = Plane(drift_position=[1150, 1800, 2500])
+detector = RaceP(model=model,
+                 prototype_selector=APete,
+                 prototype_selector_kwargs={"alpha": 0.01},
+                 measure="prototype_reassignment_impact",
+                 strategy="total")
+block_size = 1000
+ds = Sine(drift_position=[28_000, 52_000, 70_000])
 
-for i, (x, y) in enumerate(ds):
-    model.learn_one(x, y)
-    detector.update(x, y)
+for i in range(100):
+    x_block, y_block = zip(*ds.take(block_size))
+    for x, y in zip(x_block, y_block):
+        model.learn_one(x, y)
+    detector.update(x_block, y_block)
     if detector.drift_detected:
-        print(f"{int(i - window_size / 2)}) Drift detected!")
+        print(f"{i * block_size}) Drift detected!")
 ```
 
 Output:
 
 ```
-1175) Drift detected!
-1687) Drift detected!
-1751) Drift detected!
-2583) Drift detected!
+28000) Drift detected!
+52000) Drift detected!
+70000) Drift detected!
 ```
 
 ### Using RACE-P? Cite us!
 
 ```bibtex
-  @article{karolczak2026,
-  title = {Explaining data changes with prototypes: A measure-driven approach},
-  journal = {Information Fusion},
-  volume = {126},
-  pages = {103602},
-  year = {2026},
-  issn = {1566-2535},
-  doi = {10.1016/j.inffus.2025.103602}
+@article{karolczak2026,
+    title = {Explaining data changes with prototypes: A measure-driven approach},
+    journal = {Information Fusion},
+    volume = {126},
+    pages = {103602},
+    year = {2026},
+    issn = {1566-2535},
+    doi = {10.1016/j.inffus.2025.103602}
 }
 ```
 
@@ -116,13 +119,13 @@ Output:
 
 ```bibtex
 @article{karolczak2024apete,
-  title={A-PETE: Adaptive Prototype Explanations of Tree Ensembles},
-  author={Karolczak, Jacek and Stefanowski, Jerzy},
-  journal={Progress in Polish Artificial Intelligence Research},
-  volume={5},
-  pages={2--8},
-  year={2024},
-  publisher={Warsaw University of Technology WUT Press}
+    title = {A-PETE: Adaptive Prototype Explanations of Tree Ensembles},
+    author = {Karolczak, Jacek and Stefanowski, Jerzy},
+    journal = {Progress in Polish Artificial Intelligence Research},
+    volume = {5},
+    pages = {2--8},
+    year = {2024},
+    publisher = {Warsaw University of Technology WUT Press}
 }
 ```
 

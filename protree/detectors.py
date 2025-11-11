@@ -32,6 +32,7 @@ class RaceP(DriftDetector):
         self.prototype_selector = prototype_selector
         self.prototype_selector_kwargs = prototype_selector_kwargs or {}
         self.strategy = strategy
+        self.metric_value: float | dict[int | str, float] | None = None
 
         self._iter_counter: int = 0
         self._drift_detected: bool = False
@@ -56,11 +57,11 @@ class RaceP(DriftDetector):
         self._update_explainers()
         self._find_prototypes()
         if self._iter_counter >= 1:
-            metric = self._compute_metric()
+            self.metric_value = self._compute_metric()
             if (self.grace_period // 2) <= self._iter_counter < self.grace_period:
-                self._update_metric_stats(metric)
+                self._update_metric_stats(self.metric_value)
             elif self.grace_period <= self._iter_counter:
-                self._test(metric)
+                self._test(self.metric_value)
         self._iter_counter += 1
 
     def _update_block(self, x: TDataBatch, y: TTarget) -> None:
