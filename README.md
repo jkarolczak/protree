@@ -11,6 +11,10 @@ The library was implemented as a part of master's thesis by [Jacek Karolczak](ht
 supervision of [prof. dr hab. Jerzy Stefanowski](https://scholar.google.pl/citations?user=id96GvIAAAAJ)
 Till now, main contributions are measures to assess and compare prototypes, and the A-PETE and RACE-P algorithms.
 
+> [!TIP]
+> Protree is now available on PyPI and can be installed using pip:
+> `pip install protree`
+
 ## RACE-P: Real-time Analysis of Concept Evolution with Prototypes
 
 RACE-P is proposed to detect drift and also explain the nature of the drift using prototypes. The algorithm leverages
