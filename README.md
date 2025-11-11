@@ -1,4 +1,4 @@
-[![PyPI ](https://img.shields.io/pypi/v/Protree)](https://pypi.org/project/protree/)
+[![PyPI ](https://img.shields.io/pypi/v/protree)](https://pypi.org/project/protree/)
 ![Actions](https://github.com/jkarolczak/protree/actions/workflows/build_wheel.yml/badge.svg)
 
 # Protree
